@@ -195,7 +195,7 @@ async function main() {
       '--window-size=1440,1000',
       'about:blank'
     ],
-    { stdio: ['ignore', 'pipe', 'pipe'] }
+    { stdio: ['ignore', 'ignore', 'ignore'] }
   );
 
   try {
