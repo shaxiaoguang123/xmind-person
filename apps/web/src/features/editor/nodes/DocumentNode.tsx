@@ -19,7 +19,13 @@ export function DocumentNodeView({ data, selected }: DocumentNodeViewProps) {
 
 export function DocumentNode({ data, selected }: NodeProps<DocumentFlowNode>) {
   return (
-    <div className="document-node-shell" data-section-id={data.sectionId}>
+    <div
+      className="document-node-shell"
+      data-section-id={data.sectionId}
+      tabIndex={0}
+      role="group"
+      aria-label={`Document node H${data.headingDepth} ${data.title}`}
+    >
       <Handle
         type="target"
         position={Position.Top}
