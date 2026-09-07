@@ -1,6 +1,7 @@
 import type { Heading, Root, RootContent } from 'mdast';
 import { toString } from 'mdast-util-to-string';
 
+import { MarkdownCoreError } from './errors';
 import {
   copyPosition,
   requireAstPosition,
@@ -34,7 +35,10 @@ export function extractSections(
       const heading = ast.children[headingIndex];
 
       if (heading === undefined || !isHeading(heading)) {
-        throw new Error('Heading index no longer refers to an mdast heading node.');
+        throw new MarkdownCoreError(
+          'INVALID_APPLICATION_STATE',
+          'Heading index no longer refers to an mdast heading node.'
+        );
       }
 
       const nextHeadingIndex =
