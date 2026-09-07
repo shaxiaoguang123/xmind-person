@@ -72,7 +72,6 @@ async function waitForJson(url, attempts = 80) {
     }
     await delay(125);
   }
-
   throw new Error(`Timed out waiting for ${url}`);
 }
 
@@ -126,13 +125,11 @@ class CdpClient {
       returnByValue: true,
       awaitPromise: true
     });
-
     if (result.exceptionDetails !== undefined) {
       throw new Error(
         result.exceptionDetails.text ?? 'Browser evaluation failed.'
       );
     }
-
     return result.result?.value;
   }
 }
@@ -144,8 +141,19 @@ async function waitForCondition(check, label, attempts = 80) {
     }
     await delay(125);
   }
-
   throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function navigateToDemo(cdp, demoName, nodeCount) {
+  await cdp.call('Page.navigate', { url: `${BASE_URL}/?demo=${demoName}` });
+  await waitForCondition(
+    async () =>
+      cdp.evaluate(
+        `document.readyState === 'complete' && document.querySelectorAll('.react-flow__node-document').length === ${nodeCount}`
+      ),
+    `${demoName} Document Nodes`
+  );
+  await cdp.evaluate('document.fonts.ready.then(() => true)');
 }
 
 async function click(cdp, point) {
@@ -204,23 +212,26 @@ async function drag(cdp, from, to, steps = 8) {
   });
 }
 
+async function pressTab(cdp) {
+  await cdp.call('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'Tab',
+    code: 'Tab',
+    windowsVirtualKeyCode: 9
+  });
+  await cdp.call('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'Tab',
+    code: 'Tab',
+    windowsVirtualKeyCode: 9
+  });
+}
+
 function movedEnough(before, after, minimum = 12) {
   return (
     Math.abs(after.left - before.left) >= minimum ||
     Math.abs(after.top - before.top) >= minimum
   );
-}
-
-async function navigateToDemo(cdp, demoName, nodeCount) {
-  await cdp.call('Page.navigate', { url: `${BASE_URL}/?demo=${demoName}` });
-  await waitForCondition(
-    async () =>
-      cdp.evaluate(
-        `document.readyState === 'complete' && document.querySelectorAll('.react-flow__node-document').length === ${nodeCount}`
-      ),
-    `${demoName} Document Nodes`
-  );
-  await cdp.evaluate('document.fonts.ready.then(() => true)');
 }
 
 async function screenshot(cdp, name) {
@@ -229,6 +240,32 @@ async function screenshot(cdp, name) {
     captureBeyondViewport: false
   });
   writeFileSync(resolve(OUTPUT_DIR, `${name}.png`), capture.data, 'base64');
+}
+
+async function zoomMixedForEvidence(cdp) {
+  const point = await cdp.evaluate(`(() => {
+    const pane = document.querySelector('.react-flow__pane').getBoundingClientRect();
+    return { x: pane.left + pane.width * 0.58, y: pane.top + pane.height * 0.48 };
+  })()`);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const zoom = await cdp.evaluate(`(() => {
+      const viewport = document.querySelector('.react-flow__viewport');
+      return new DOMMatrix(getComputedStyle(viewport).transform).a;
+    })()`);
+    if (zoom >= 0.55) {
+      return;
+    }
+    await cdp.call('Input.dispatchMouseEvent', {
+      type: 'mouseWheel',
+      x: point.x,
+      y: point.y,
+      deltaX: 0,
+      deltaY: -320,
+      pointerType: 'mouse'
+    });
+    await delay(100);
+  }
 }
 
 async function main() {
@@ -295,17 +332,27 @@ async function main() {
 
     for (const demo of DEMOS) {
       await navigateToDemo(cdp, demo.name, demo.nodes);
-
       const snapshot = await cdp.evaluate(`(() => {
+        const nodes = [...document.querySelectorAll('.react-flow__node-document')];
         const cards = [...document.querySelectorAll('.document-card')];
         const titles = cards.map((card) => card.querySelector('.document-card-title')?.textContent ?? '');
-        const nodeTransforms = [...document.querySelectorAll('.react-flow__node-document')].map((element) => element.style.transform);
         const apiModes = cards
           .filter((card) => card.querySelector('.document-card-title')?.textContent === 'API')
           .map((card) => card.getAttribute('data-view-mode'));
+        const edgePaths = [...document.querySelectorAll('.react-flow__edge-path')];
+        const h2HeadingStyles = cards
+          .filter((card) => card.matches('.document-card--heading.document-card--h2'))
+          .map((card) => {
+            const title = card.querySelector('.document-card-title');
+            const style = getComputedStyle(card);
+            const titleStyle = getComputedStyle(title);
+            return [style.borderWidth, titleStyle.fontSize, titleStyle.fontWeight].join('|');
+          });
         return {
-          nodes: document.querySelectorAll('.react-flow__node-document').length,
+          nodes: nodes.length,
+          nodeIdsUnique: new Set(nodes.map((node) => node.getAttribute('data-id'))).size === nodes.length,
           edges: document.querySelectorAll('.react-flow__edge').length,
+          edgePathsReady: edgePaths.length > 0 && edgePaths.every((path) => (path.getAttribute('d') ?? '').length > 0),
           headingCards: document.querySelectorAll('.document-card--heading').length,
           markdownCards: document.querySelectorAll('.document-card--markdown').length,
           handles: document.querySelectorAll('.react-flow__handle').length,
@@ -314,9 +361,9 @@ async function main() {
           apiModes,
           syntheticRootVisible: titles.includes('Document Root'),
           horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-          uniqueNodeTransforms: new Set(nodeTransforms).size,
-          depthLabels: [...document.querySelectorAll('.document-card-depth')].map((element) => element.textContent),
-          cjkFontAvailable: document.fonts.check('16px "Noto Sans CJK SC"', '文件处理系统')
+          uniqueNodeTransforms: new Set(nodes.map((node) => node.style.transform)).size,
+          cjkFontAvailable: document.fonts.check('16px "Noto Sans CJK SC"', '文件处理系统'),
+          sameDepthHeadingTheme: h2HeadingStyles.length < 2 || new Set(h2HeadingStyles).size === 1
         };
       })()`);
 
@@ -330,6 +377,12 @@ async function main() {
           `${demo.name}: expected nodes/edges/heading/markdown ${demo.nodes}/${demo.edges}/${demo.headingCards}/${demo.markdownCards}, received ${snapshot.nodes}/${snapshot.edges}/${snapshot.headingCards}/${snapshot.markdownCards}`
         );
       }
+      if (!snapshot.nodeIdsUnique) {
+        throw new Error(`${demo.name}: React Flow node IDs are not unique.`);
+      }
+      if (!snapshot.edgePathsReady) {
+        throw new Error(`${demo.name}: hierarchy edges were not measured/rendered.`);
+      }
       if (snapshot.handles !== demo.nodes * 2) {
         throw new Error(`${demo.name}: Document Nodes do not share exactly two structural handles.`);
       }
@@ -341,6 +394,9 @@ async function main() {
         JSON.stringify(snapshot.apiModes) !== JSON.stringify(['heading', 'markdown'])
       ) {
         throw new Error('mixed-cards: duplicate API nodes did not keep independent view modes.');
+      }
+      if (!snapshot.sameDepthHeadingTheme) {
+        throw new Error(`${demo.name}: same-depth Heading Cards do not share the same base theme.`);
       }
       if (snapshot.syntheticRootVisible) {
         throw new Error(`${demo.name}: synthetic Document Root became visible.`);
@@ -355,24 +411,40 @@ async function main() {
         throw new Error(`${demo.name}: CJK font fallback is unavailable in browser QA.`);
       }
 
+      if (demo.name === 'mixed-cards') {
+        const localBodyOwnership = await cdp.evaluate(`(() => {
+          const upload = [...document.querySelectorAll('.document-card')]
+            .find((card) => card.querySelector('.document-card-title')?.textContent === '上传文件');
+          const text = upload?.querySelector('.markdown-card-body')?.textContent ?? '';
+          return {
+            hasOwnBody: text.includes('支持多种格式'),
+            repeatsDescendants: ['TXT', 'PDF', 'Word'].some((title) => text.includes(title))
+          };
+        })()`);
+        if (!localBodyOwnership.hasOwnBody || localBodyOwnership.repeatsDescendants) {
+          throw new Error('mixed-cards: Markdown Card violated Local Body ownership semantics.');
+        }
+      }
+
+      if (demo.name === 'empty-card') {
+        const emptyBody = await cdp.evaluate(`(() => {
+          const card = [...document.querySelectorAll('.document-card')]
+            .find((item) => item.querySelector('.document-card-title')?.textContent === 'Empty');
+          return {
+            mode: card?.getAttribute('data-view-mode') ?? null,
+            hasBodyScroller: card?.querySelector('.markdown-card-body') !== null
+          };
+        })()`);
+        if (emptyBody.mode !== 'markdown' || emptyBody.hasBodyScroller) {
+          throw new Error('empty-card: empty Local Body is not a valid header-only Markdown Card.');
+        }
+      }
+
       report.demos[demo.name] = snapshot;
 
       if (demo.name === 'mixed-cards') {
-        const center = await cdp.evaluate(`(() => {
-          const pane = document.querySelector('.react-flow__pane').getBoundingClientRect();
-          return { x: pane.left + pane.width / 2, y: pane.top + pane.height / 2 };
-        })()`);
-        await cdp.call('Input.dispatchMouseEvent', {
-          type: 'mouseWheel',
-          x: center.x,
-          y: center.y,
-          deltaX: 0,
-          deltaY: -220,
-          pointerType: 'mouse'
-        });
-        await delay(180);
+        await zoomMixedForEvidence(cdp);
       }
-
       await screenshot(cdp, demo.name);
     }
 
@@ -441,7 +513,8 @@ async function main() {
     report.markdown = markdownChecks;
 
     const linkDragStart = await cdp.evaluate(`(() => {
-      const link = [...document.querySelectorAll('.markdown-card-body a')].find((element) => element.textContent === '安全链接');
+      const link = [...document.querySelectorAll('.markdown-card-body a')]
+        .find((element) => element.textContent === '安全链接');
       const node = link.closest('.react-flow__node-document');
       const linkRect = link.getBoundingClientRect();
       const nodeRect = node.getBoundingClientRect();
@@ -458,12 +531,63 @@ async function main() {
     );
     await delay(120);
     const linkDragAfter = await cdp.evaluate(`(() => {
-      const link = [...document.querySelectorAll('.markdown-card-body a')].find((element) => element.textContent === '安全链接');
+      const link = [...document.querySelectorAll('.markdown-card-body a')]
+        .find((element) => element.textContent === '安全链接');
       const rect = link.closest('.react-flow__node-document').getBoundingClientRect();
       return { left: rect.left, top: rect.top };
     })()`);
     if (movedEnough(linkDragStart.nodeRect, linkDragAfter, 4)) {
       throw new Error('Link interaction accidentally dragged its Document Node.');
+    }
+
+    const selectablePoint = await cdp.evaluate(`(() => {
+      const card = document.querySelector('.document-card--heading');
+      const rect = card.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await click(cdp, selectablePoint);
+    await waitForCondition(
+      async () =>
+        cdp.evaluate(
+          "document.querySelectorAll('.document-card[data-selected=\"true\"]').length === 1"
+        ),
+      'visible Document Node selection'
+    );
+    const selectedOutline = await cdp.evaluate(`(() => {
+      const card = document.querySelector('.document-card[data-selected="true"]');
+      const style = getComputedStyle(card);
+      return { width: style.outlineWidth, style: style.outlineStyle };
+    })()`);
+    if (selectedOutline.width === '0px' || selectedOutline.style === 'none') {
+      throw new Error('Selected state has no non-color outline.');
+    }
+
+    await navigateToDemo(cdp, 'gfm-card', 2);
+    let focusState = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await pressTab(cdp);
+      await delay(80);
+      focusState = await cdp.evaluate(`(() => {
+        const active = document.activeElement;
+        const style = active instanceof HTMLElement ? getComputedStyle(active) : null;
+        return {
+          isDocumentNode: active?.classList?.contains('react-flow__node-document') ?? false,
+          focusVisible: active?.matches?.(':focus-visible') ?? false,
+          outlineWidth: style?.outlineWidth ?? '0px',
+          outlineStyle: style?.outlineStyle ?? 'none'
+        };
+      })()`);
+      if (focusState.isDocumentNode) {
+        break;
+      }
+    }
+    if (
+      !focusState?.isDocumentNode ||
+      !focusState.focusVisible ||
+      focusState.outlineWidth === '0px' ||
+      focusState.outlineStyle === 'none'
+    ) {
+      throw new Error('Keyboard focus indication is missing on Document Nodes.');
     }
 
     await navigateToDemo(cdp, 'long-card', 2);
@@ -533,68 +657,14 @@ async function main() {
     await waitForCondition(
       async () => {
         const current = await cdp.evaluate(`(() => {
-          const rect = document.querySelector('.document-card--markdown').closest('.react-flow__node-document').getBoundingClientRect();
+          const rect = document.querySelector('.document-card--markdown')
+            .closest('.react-flow__node-document').getBoundingClientRect();
           return { left: rect.left, top: rect.top };
         })()`);
         return movedEnough(headerDragStart.nodeRect, current);
       },
       'Document Node drag from card header'
     );
-
-    await navigateToDemo(cdp, 'mixed-cards', 9);
-    const firstNode = await cdp.evaluate(`(() => {
-      const node = document.querySelector('.react-flow__node-document');
-      const rect = node.getBoundingClientRect();
-      return {
-        point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-      };
-    })()`);
-    await click(cdp, firstNode.point);
-    await waitForCondition(
-      async () =>
-        cdp.evaluate(
-          "document.querySelectorAll('.document-card[data-selected=\"true\"]').length === 1"
-        ),
-      'Document Node selection'
-    );
-    const selectedOutline = await cdp.evaluate(`(() => {
-      const card = document.querySelector('.document-card[data-selected="true"]');
-      const style = getComputedStyle(card);
-      return { width: style.outlineWidth, style: style.outlineStyle };
-    })()`);
-    if (selectedOutline.width === '0px' || selectedOutline.style === 'none') {
-      throw new Error('Selected state has no non-color outline.');
-    }
-
-    await cdp.call('Input.dispatchKeyEvent', {
-      type: 'keyDown',
-      key: 'Tab',
-      code: 'Tab',
-      windowsVirtualKeyCode: 9
-    });
-    await cdp.call('Input.dispatchKeyEvent', {
-      type: 'keyUp',
-      key: 'Tab',
-      code: 'Tab',
-      windowsVirtualKeyCode: 9
-    });
-    await delay(100);
-    const focusState = await cdp.evaluate(`(() => {
-      const active = document.activeElement;
-      const style = active instanceof HTMLElement ? getComputedStyle(active) : null;
-      return {
-        isDocumentNode: active?.classList?.contains('react-flow__node-document') ?? false,
-        outlineWidth: style?.outlineWidth ?? '0px',
-        outlineStyle: style?.outlineStyle ?? 'none'
-      };
-    })()`);
-    if (
-      !focusState.isDocumentNode ||
-      focusState.outlineWidth === '0px' ||
-      focusState.outlineStyle === 'none'
-    ) {
-      throw new Error('Keyboard focus indication is missing on Document Nodes.');
-    }
 
     const viewportBefore = await cdp.evaluate(`(() => {
       const pane = document.querySelector('.react-flow__pane');
