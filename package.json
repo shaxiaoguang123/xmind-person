@@ -12,6 +12,6 @@
     "test": "npm run test --workspace @xmind-person/web",
     "build": "npm run build --workspace @xmind-person/web",
     "architecture:check": "node scripts/check-boundaries.mjs",
-    "browser:qa": "node scripts/browser-qa.mjs"
+    "browser:qa": "node scripts/browser-qa.mjs && node scripts/mixed-screenshot.mjs"
   }
 }
