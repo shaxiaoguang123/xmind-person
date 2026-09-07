@@ -12,7 +12,7 @@ on:
       - 'docs/**'
 
 jobs:
-  markdown-core:
+  t02-web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,11 +21,19 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Preserve generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: t02-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+      - name: Architecture boundaries
+        run: npm run architecture:check
       - name: Lint
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
-      - name: Unit tests
+      - name: Unit and component tests
         run: npm test
       - name: Build
         run: npm run build
