@@ -1,12 +1,20 @@
 import type { DocumentSection, SectionTree } from '../markdown';
 import { createDebugPlacement } from './debugPlacement';
-import type { VisualGraph, VisualHierarchyEdge, VisualNode } from './types';
+import type {
+  VisualGraph,
+  VisualGraphProjectionOptions,
+  VisualHierarchyEdge,
+  VisualNode
+} from './types';
 
 function hierarchyEdgeId(source: string, target: string): string {
   return `hierarchy:${source}->${target}`;
 }
 
-export function projectSectionTree(tree: SectionTree): VisualGraph {
+export function projectSectionTree(
+  tree: SectionTree,
+  options: VisualGraphProjectionOptions = {}
+): VisualGraph {
   const nodes: VisualNode[] = [];
   const hierarchyEdges: VisualHierarchyEdge[] = [];
   let preorderIndex = 0;
@@ -24,7 +32,8 @@ export function projectSectionTree(tree: SectionTree): VisualGraph {
       sectionId: section.nodeId,
       headingDepth: section.headingDepth,
       title: section.title,
-      viewMode: 'heading',
+      localBody: section.localBody,
+      viewMode: options.viewModeByNodeId?.[section.nodeId] ?? 'heading',
       position: createDebugPlacement(treeDepth, currentPreorderIndex),
       treeDepth,
       documentOrder: section.documentOrder

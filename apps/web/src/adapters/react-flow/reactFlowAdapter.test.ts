@@ -11,6 +11,7 @@ const graph: VisualGraph = {
       sectionId: 'stable-a',
       headingDepth: 2,
       title: 'A',
+      localBody: 'Body A.',
       viewMode: 'heading',
       position: { x: 0, y: 0 },
       treeDepth: 0,
@@ -21,8 +22,9 @@ const graph: VisualGraph = {
       sectionId: 'stable-b',
       headingDepth: 4,
       title: 'B',
-      viewMode: 'heading',
-      position: { x: 260, y: 132 },
+      localBody: '- one\n- two',
+      viewMode: 'markdown',
+      position: { x: 440, y: 380 },
       treeDepth: 1,
       documentOrder: 1
     }
@@ -38,7 +40,7 @@ const graph: VisualGraph = {
 };
 
 describe('React Flow adapter', () => {
-  it('preserves Stable Section IDs as React Flow node IDs', () => {
+  it('preserves Stable IDs and uses one Document Node type for every view mode', () => {
     const nodes = toReactFlowNodes(graph);
 
     expect(nodes.map((node) => node.id)).toEqual(['stable-a', 'stable-b']);
@@ -46,7 +48,30 @@ describe('React Flow adapter', () => {
       'stable-a',
       'stable-b'
     ]);
-    expect(nodes.every((node) => node.type === 'heading')).toBe(true);
+    expect(nodes.every((node) => node.type === 'document')).toBe(true);
+  });
+
+  it('passes Local Body and viewMode through without changing React Flow identity', () => {
+    const nodes = toReactFlowNodes(graph);
+
+    expect(nodes[0]).toMatchObject({
+      id: 'stable-a',
+      type: 'document',
+      data: {
+        sectionId: 'stable-a',
+        localBody: 'Body A.',
+        viewMode: 'heading'
+      }
+    });
+    expect(nodes[1]).toMatchObject({
+      id: 'stable-b',
+      type: 'document',
+      data: {
+        sectionId: 'stable-b',
+        localBody: '- one\n- two',
+        viewMode: 'markdown'
+      }
+    });
   });
 
   it('adapts only projected hierarchy edges without inventing FlowEdge semantics', () => {

@@ -1,10 +1,10 @@
 import type { VisualGraph } from '../../core/graph';
-import type { HeadingFlowNode } from './types';
+import type { DocumentFlowNode } from './types';
 
-export function toReactFlowNodes(graph: VisualGraph): HeadingFlowNode[] {
+export function toReactFlowNodes(graph: VisualGraph): DocumentFlowNode[] {
   return graph.nodes.map((node) => ({
     id: node.id,
-    type: 'heading',
+    type: 'document',
     position: node.position,
     draggable: true,
     selectable: true,
@@ -12,6 +12,7 @@ export function toReactFlowNodes(graph: VisualGraph): HeadingFlowNode[] {
       sectionId: node.sectionId,
       title: node.title,
       headingDepth: node.headingDepth,
+      localBody: node.localBody,
       viewMode: node.viewMode
     }
   }));

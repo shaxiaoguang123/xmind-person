@@ -1,10 +1,10 @@
 import type { GraphPosition } from './types';
 
-const HORIZONTAL_GAP = 260;
-const VERTICAL_GAP = 132;
+const HORIZONTAL_GAP = 440;
+const VERTICAL_GAP = 380;
 
 /**
- * TEMPORARY T02 DEBUG PLACEMENT.
+ * TEMPORARY T02/T03 DEBUG PLACEMENT.
  *
  * This is deterministic display scaffolding only. It is not LayoutMetadata,
  * is never persisted, does not mutate the Section Tree, and is intentionally

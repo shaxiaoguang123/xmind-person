@@ -5,13 +5,20 @@ export interface GraphPosition {
   y: number;
 }
 
-export type VisualNodeViewMode = 'heading';
+export type VisualNodeViewMode = 'heading' | 'markdown';
+
+export type ViewModeByNodeId = Readonly<Record<string, VisualNodeViewMode>>;
+
+export interface VisualGraphProjectionOptions {
+  viewModeByNodeId?: ViewModeByNodeId;
+}
 
 export interface VisualNode {
   id: string;
   sectionId: string;
   headingDepth: HeadingDepth;
   title: string;
+  localBody: string;
   viewMode: VisualNodeViewMode;
   position: GraphPosition;
   treeDepth: number;

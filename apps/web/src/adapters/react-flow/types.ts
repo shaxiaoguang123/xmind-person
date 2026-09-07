@@ -3,11 +3,12 @@ import type { Node } from '@xyflow/react';
 import type { VisualNodeViewMode } from '../../core/graph';
 import type { HeadingDepth } from '../../core/markdown';
 
-export interface HeadingNodeData extends Record<string, unknown> {
+export interface DocumentNodeData extends Record<string, unknown> {
   sectionId: string;
   title: string;
   headingDepth: HeadingDepth;
+  localBody: string;
   viewMode: VisualNodeViewMode;
 }
 
-export type HeadingFlowNode = Node<HeadingNodeData, 'heading'>;
+export type DocumentFlowNode = Node<DocumentNodeData, 'document'>;
