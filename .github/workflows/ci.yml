@@ -11,6 +11,9 @@ on:
       - 'test/**'
       - 'docs/**'
 
+permissions:
+  contents: write
+
 jobs:
   t02-web:
     runs-on: ubuntu-latest
@@ -21,12 +24,16 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Preserve generated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: t02-package-lock
-          path: package-lock.json
-          if-no-files-found: error
+      - name: Commit generated lockfile
+        if: github.event_name == 'push' && github.ref_name == 'feat/t02-basic-react-flow-graph'
+        run: |
+          if [ -n "$(git status --porcelain package-lock.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore(ci): add npm lockfile"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
       - name: Architecture boundaries
         run: npm run architecture:check
       - name: Lint
@@ -37,3 +44,24 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Start Vite dev server
+        run: |
+          npm run dev --workspace @xmind-person/web > /tmp/t02-vite.log 2>&1 &
+          echo $! > /tmp/t02-vite.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat /tmp/t02-vite.log
+          exit 1
+      - name: Browser QA
+        run: npm run browser:qa
+      - name: Upload browser QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t02-browser-qa
+          path: artifacts/t02-browser
+          if-no-files-found: warn

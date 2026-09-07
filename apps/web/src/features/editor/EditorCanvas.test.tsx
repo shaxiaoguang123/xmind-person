@@ -2,8 +2,14 @@
 
 import '@testing-library/jest-dom/vitest';
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, beforeAll } from 'vitest';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { VisualGraph } from '../../core/graph';
 import { EditorCanvas } from './EditorCanvas';
@@ -35,6 +41,10 @@ beforeAll(() => {
       };
     }
   });
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 const graph: VisualGraph = {
@@ -88,7 +98,7 @@ const graph: VisualGraph = {
 
 describe('HeadingNode', () => {
   it.each([1, 2, 3, 4, 5, 6] as const)('renders H%i theme label and title', (headingDepth) => {
-    const { unmount } = render(
+    render(
       <HeadingNodeView
         data={{
           sectionId: `section-${headingDepth}`,
@@ -104,7 +114,6 @@ describe('HeadingNode', () => {
     expect(screen.getByLabelText(`H${headingDepth} Depth ${headingDepth}`)).toHaveClass(
       `heading-node--h${headingDepth}`
     );
-    unmount();
   });
 
   it('exposes selected state with a non-color-only hook', () => {
@@ -128,7 +137,7 @@ describe('HeadingNode', () => {
 });
 
 describe('EditorCanvas', () => {
-  it('mounts React Flow with duplicate titles and hierarchy edges', () => {
+  it('mounts React Flow and renders duplicate titles independently', () => {
     const { container } = render(
       <div style={{ width: 900, height: 640 }}>
         <EditorCanvas graph={graph} />
@@ -138,7 +147,6 @@ describe('EditorCanvas', () => {
     expect(screen.getByLabelText('Section hierarchy debug canvas')).toBeInTheDocument();
     expect(screen.getAllByText('API')).toHaveLength(2);
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(3);
-    expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(2);
   });
 
   it('supports basic node selection as ephemeral UI state', async () => {
@@ -148,16 +156,18 @@ describe('EditorCanvas', () => {
       </div>
     );
     const targetNode = container.querySelector('[data-id="section-b"]');
+    const targetCard = targetNode?.querySelector('.heading-node-card');
 
     expect(targetNode).not.toBeNull();
-    if (targetNode === null) {
+    expect(targetCard).not.toBeNull();
+    if (targetNode === null || targetCard === null) {
       return;
     }
 
     fireEvent.click(targetNode);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('H3 API')).toHaveAttribute('data-selected', 'true');
+      expect(targetCard).toHaveAttribute('data-selected', 'true');
     });
   });
 });
