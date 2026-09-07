@@ -123,13 +123,14 @@ describe('DocumentNode presentation', () => {
     );
 
     const safeLink = screen.getByRole('link', { name: 'safe link' });
-    const unsafeLink = screen.getByRole('link', { name: 'unsafe link' });
+    const unsafeLink = screen.getByText('unsafe link').closest('a');
 
     expect(safeLink).toHaveAttribute('href', 'https://example.com/docs');
     expect(safeLink).toHaveAttribute('target', '_blank');
     expect(safeLink).toHaveAttribute('rel', 'noopener noreferrer');
     expect(safeLink).toHaveClass('nodrag', 'nopan');
-    expect(unsafeLink.getAttribute('href')).not.toBe('javascript:alert(1)');
+    expect(unsafeLink).not.toBeNull();
+    expect(unsafeLink?.getAttribute('href')).not.toMatch(/^javascript:/i);
   });
 
   it('does not create executable DOM from raw HTML source', () => {
