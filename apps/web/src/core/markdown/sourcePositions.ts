@@ -1,22 +1,12 @@
 import type { RootContent } from 'mdast';
+import type { Point, Position } from 'unist';
 
 import { MarkdownCoreError } from './errors';
 import type { SourcePoint, SourcePosition } from './types';
 
 type PositionedNode = Pick<RootContent, 'position'>;
 
-type AstPoint = {
-  line: number;
-  column: number;
-  offset?: number;
-};
-
-type AstPosition = {
-  start: AstPoint;
-  end: AstPoint;
-};
-
-function copyPoint(point: AstPoint): SourcePoint {
+function copyPoint(point: Point): SourcePoint {
   if (point.offset === undefined) {
     return { line: point.line, column: point.column };
   }
@@ -27,7 +17,7 @@ function copyPoint(point: AstPoint): SourcePoint {
 export function requireAstPosition(
   node: PositionedNode,
   label: string
-): AstPosition {
+): Position {
   if (node.position === undefined) {
     throw new MarkdownCoreError(
       'INVALID_APPLICATION_STATE',
@@ -38,7 +28,7 @@ export function requireAstPosition(
   return node.position;
 }
 
-export function copyPosition(position: AstPosition): SourcePosition {
+export function copyPosition(position: Position): SourcePosition {
   return {
     start: copyPoint(position.start),
     end: copyPoint(position.end)
