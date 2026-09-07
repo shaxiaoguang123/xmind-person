@@ -9,7 +9,7 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | ARCH-003 | `architecture.md`, ADR-0004 | T00, T09-T10 | persistence/API tests |
 | ARCH-004 | `architecture.md` | T00, T09 | repository structure review; builds |
 | ARCH-005 | `api-contract.md` | T00, T09-T10 | OpenAPI/schema checks |
-| ARCH-006 | `architecture.md` | T01, T04-T06 | deterministic unit tests |
+| ARCH-006 | `architecture.md` | T01-T02, T04-T06 | deterministic unit tests |
 | MD-001 | `domain-model.md`, `architecture.md` | T01 | parser dependency/code review; unit tests |
 | MD-002 | `domain-model.md` | T01, T03 | heading-depth unit tests |
 | MD-003 | `domain-model.md` | T01 | hierarchy unit tests |
@@ -24,8 +24,8 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | MD-012 | `domain-model.md` | T01 | GFM fixture/unit tests |
 | MD-013 | `domain-model.md` | T01, T08 | AST position unit tests |
 | MD-014 | `domain-model.md` | T01 | skipped-depth/non-H1 unit tests |
-| GRAPH-001 | ADR-0001, `domain-model.md` | T02, T07 | graph projection tests |
-| GRAPH-002 | `domain-model.md` | T01-T03, T08 | type/unit tests |
+| GRAPH-001 | ADR-0001, `domain-model.md`, `visual-graph-projection.md` | T02, T07 | graph projection tests; architecture boundary review |
+| GRAPH-002 | `domain-model.md`, `visual-graph-projection.md` | T01-T03, T08 | type/unit tests |
 | GRAPH-003 | `domain-model.md` | T07 | edge validation/unit tests |
 | GRAPH-004 | `domain-model.md` | T06 | visibility/collapse tests |
 | GRAPH-005 | `frontend-design.md` | T03, T12 | component/visual tests |
@@ -45,7 +45,7 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | UI-004 | `frontend-design.md`, `domain-model.md` | T03 | Markdown Card tests |
 | UI-005 | `frontend-design.md` | T03 | Markdown rendering tests |
 | UI-006 | `frontend-design.md` | T03, T13 | browser/visual tests |
-| UI-007 | `interaction-contract.md` | T02, T11, T13 | E2E interaction tests |
+| UI-007 | `interaction-contract.md`, `frontend-design.md` | T02, T11, T13 | browser interaction tests |
 | UI-008 | `interaction-contract.md` | T10, T13 | save/reload E2E tests |
 | UI-009 | `frontend-design.md` | T13 | component/E2E tests |
 | UI-010 | `frontend-design.md` | T15 | responsive review |
@@ -58,10 +58,10 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | MOTION-003 | `frontend-design.md` | T12, T15 | reduced-motion E2E/manual review |
 | A11Y-001 | `frontend-design.md` | T15 | accessibility audit |
 | A11Y-002 | `interaction-contract.md` | T11, T15 | keyboard/focus tests |
-| A11Y-003 | `frontend-design.md` | T15 | accessibility audit |
-| A11Y-004 | `frontend-design.md` | T12, T15 | visual/accessibility audit |
+| A11Y-003 | `frontend-design.md` | T02, T15 | accessible-name component/browser review; later audit |
+| A11Y-004 | `frontend-design.md` | T02, T12, T15 | non-color selection component/visual review; later audit |
 | A11Y-005 | `frontend-design.md` | T12, T15 | reduced-motion tests |
-| A11Y-006 | `frontend-design.md` | T12, T15 | focus-ring visual review |
+| A11Y-006 | `frontend-design.md` | T02, T12, T15 | focus-ring review; later audit |
 | PERF-001 | `test-strategy.md` | T14 | benchmark fixtures |
 | PERF-002 | `test-strategy.md` | T14 | benchmark suite |
 | PERF-003 | `architecture.md` | T14 | profiling/component tests |
@@ -81,7 +81,7 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | TEST-004 | `test-strategy.md` | T12+ | visual-regression CI |
 | TEST-005 | `.github/workflows/ci.yml` | T00-T16 | GitHub Actions required checks |
 | TEST-006 | `AGENTS.md`, `test-strategy.md` | T01-T16 | QA review/search for skips |
-| TEST-007 | `frontend-design.md`, `test-strategy.md` | UI stages | screenshot review |
+| TEST-007 | `frontend-design.md`, `test-strategy.md` | UI stages | real-browser screenshot review |
 | TEST-008 | `tasks.md` | T00-T16 | stage gate checklist |
 | GIT-001 | `git-workflow.md` | T00-T16 | branch/PR review |
 | GIT-002 | `git-workflow.md` | T00-T16 | branch/PR review |
@@ -121,15 +121,31 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | MD-012 / AC-T01-14 | remark-gfm enabled; original Local Body source retained | task-list/strikethrough/autolink/table assertions plus GFM AST test |
 | MD-013 / AC-T01-15 | unist/mdast positions copied and offsets used for slicing | source-location unit test |
 | TEST-002 / AC-T01-16 | 3 Markdown-core test files | GitHub Actions: 20/20 tests PASS |
-| TEST-005 / AC-T01-17 | strict TypeScript check | GitHub Actions typecheck PASS |
-| TEST-005 / AC-T01-18 | ESLint stage gate | GitHub Actions lint PASS |
-| TEST-005 / AC-T01-19 | declaration-producing TypeScript build | GitHub Actions build PASS |
+| TEST-005 / AC-T01-17..19 | strict TypeScript, ESLint, declaration build | GitHub Actions typecheck/lint/build PASS |
 | PROCESS-005, PROCESS-009 / AC-T01-20 | branch diff contains Markdown core/config/fixtures/docs only | `docs/qa/t01-review.md` scope review PASS |
 
-## T01 QA / Gate Evidence
+## T02 Requirement / Acceptance Evidence
 
-- Semantics: `docs/markdown-section-semantics.md`.
-- Independent review: `docs/qa/t01-review.md`.
+| Requirement / AC | Implementation Evidence | Verification Evidence |
+| --- | --- | --- |
+| ARCH-001, GRAPH-001 / AC-T02-03,08,09 | `core/graph` defines `VisualGraph` + `VisualHierarchyEdge`; no domain `FlowEdge` reuse | graph/adapter tests; `docs/visual-graph-projection.md`; QA architecture audit |
+| ARCH-006 / AC-T02-03,19,20 | pure `projectSectionTree()` and `createDebugPlacement()` | deterministic/purity unit tests; architecture boundary check |
+| GRAPH-002 / AC-T02-05,06,07 | Visual Node copies stable Section `nodeId`; one per real Section | projection + adapter identity tests; duplicate fixture/browser QA |
+| GRAPH-001 / AC-T02-04,10,11 | projection starts from Synthetic Root children and creates edges only with real parents | root/top-level/skipped-depth unit tests; browser root-absence check |
+| ARCH-001 / AC-T02-12..14 | `core/markdown` -> `core/graph` -> `adapters/react-flow` -> UI | `scripts/check-boundaries.mjs`; CI architecture PASS |
+| UI-003 / AC-T02-15,16 | custom `HeadingNode` registered through `nodeTypes`; H1-H6 classes/tokens | component tests; Chrome screenshots cover H1-H6 |
+| UI-007 / AC-T02-17,18,21 | React Flow basic pan/zoom/select/drag, no persistence writes | real Chrome CDP selection/drag/reload/zoom/pan PASS |
+| TEST-007 / AC-T02-17..22,30 | system-Chrome QA plus committed screenshots | `docs/screenshots/t02-*.png`; `docs/qa/t02-review.md` |
+| TEST-005 / AC-T02-23..27 | reproducible lockfile and stage CI | `npm ci`, 37/37 tests, lint, typecheck, Vite build PASS |
+| TEST-006 / AC-T02-23,24,30 | tests remain active and core projection is not mocked | architecture script rejects `.skip`/`.only`; QA failure/root-cause record |
+| PROCESS-005, PROCESS-009 / AC-T02-28,29 | deferred features excluded from source and documented | boundary check rejects ELK/Dagre/`childrenPlacement`; scope diff/QA PASS |
+
+## T02 Gate Evidence
+
+- Projection boundary: `docs/visual-graph-projection.md`.
+- Independent review: `docs/qa/t02-review.md`.
 - Task acceptance state: `tasks.md`.
-- CI: `.github/workflows/ci.yml` executes install, lint, typecheck, unit tests, and build on task branches and PRs.
-- Final PR creation is permitted only after the documentation-synchronized branch head repeats the full CI gate successfully.
+- CI: `.github/workflows/ci.yml` executes `npm ci`, architecture boundary checks, lint, typecheck, tests, build, system-Chrome QA, and screenshot artifact upload.
+- Final implementation-head run `34111883942`: all checks PASS, Vitest 37/37.
+- Browser screenshots are committed under `docs/screenshots/` for PR/manual review.
+- The final documentation/screenshot branch head must repeat the complete gate before PR creation.

@@ -151,16 +151,85 @@ See `docs/markdown-section-semantics.md` and ADR-0003.
 
 ## T01 Test/Build Boundary
 
-T01 adds only the minimum TypeScript Markdown-core workspace needed for this stage:
+T01 added only the minimum TypeScript Markdown-core workspace needed for that stage: strict TypeScript, ESLint, Vitest, remark/mdast dependencies, and the corresponding CI gate. It did not add React Flow, Playwright, backend dependencies, or database infrastructure.
 
-- strict TypeScript;
-- ESLint;
-- Vitest;
-- remark/mdast dependencies;
-- GitHub Actions install/lint/typecheck/unit/build gate.
+## T02 Architecture Slice
 
-It deliberately does not bootstrap React/Vite UI runtime, Playwright, backend dependencies, or database infrastructure.
+T02 extends the frontend only through an explicit one-way projection chain:
+
+```text
+apps/web/src/core/markdown/
+  Stable Section Tree
+        |
+        v
+apps/web/src/core/graph/
+  VisualGraph
+  VisualNode
+  VisualHierarchyEdge
+  createDebugPlacement()
+        |
+        v
+apps/web/src/adapters/react-flow/
+  toReactFlowNodes()
+  toReactFlowEdges()
+        |
+        v
+apps/web/src/features/editor/ + app/
+  HeadingNode
+  EditorCanvas
+  Vite/React runtime
+```
+
+### Visual Graph is renderer-neutral
+
+`core/graph` is pure TypeScript. It does not import React, browser APIs, CSS, or `@xyflow/react`.
+
+The graph core consumes `SectionTree` and produces `VisualGraph`; it does not consume React Flow types. This preserves future freedom for export/layout/test/rendering adapters that should not depend on a UI library.
+
+### Identity is not re-generated
+
+T02 preserves the T01 stable identity across the rendering boundary:
+
+```text
+DocumentSection.nodeId
+  == VisualNode.sectionId
+  == VisualNode.id
+  == React Flow node.id
+```
+
+No `reactFlowId` exists and no ADR was required for a second identity because no second identity is introduced.
+
+### VisualHierarchyEdge is a projection artifact
+
+Markdown parent-child relations are projected into `VisualHierarchyEdge` only so the Section Tree can be drawn. This type is deliberately distinct from the independent domain `FlowEdge` described in ADR-0001 and `docs/domain-model.md`.
+
+A VisualHierarchyEdge:
+
+- is not persisted;
+- is not a future `document.flow.json` Flow Edge;
+- does not permit user connection/editing in T02;
+- is mapped by the React Flow adapter only to a basic non-animated rendering edge.
+
+Synthetic Document Root siblings therefore have no artificial edge between them.
+
+### Temporary debug placement
+
+T02 nodes require positions for React Flow rendering, but T02 does not own formal automatic layout.
+
+`createDebugPlacement(treeDepth, preorderIndex)` supplies deterministic test/debug coordinates only. It is explicitly temporary, pure, non-persisted, and not LayoutMetadata. It performs no ELK, Dagre, collision resolution, subtree centering, edge routing, or dynamic spacing.
+
+### Ephemeral interaction state
+
+T02 selection, drag position, and viewport transforms remain React/UI-ephemeral. Dragging never writes Flow Metadata. Reloading recreates the Visual Graph and deterministic debug placement.
+
+Initial `fitView` is acceptable for this debug-only stage; the later persisted viewport contract still requires saved viewport restoration to supersede unconditional fitting.
+
+### Enforced dependency checks
+
+`scripts/check-boundaries.mjs` fails CI if Markdown Core or Graph Core imports React/React Flow/browser globals. It also rejects `.skip`/`.only` and T02-deferred layout identifiers such as ELK/Dagre/`childrenPlacement` in the source tree.
+
+See `docs/visual-graph-projection.md` and `docs/qa/t02-review.md`.
 
 ## Deferred Architecture Problems
 
-T01 stable identity only guarantees reuse when an existing mapping is available. Intelligent reconciliation after arbitrary external large-scale Markdown edits, duplicate-section moves/renames, splits, or merges is deferred and must not be solved with undocumented fuzzy matching.
+Stable identity after arbitrary external Markdown restructuring remains deferred from T01. Formal layout/ELK, collapse visibility, independent FlowEdge editing, persistence, backend services, and the remaining editor architecture continue to their scheduled stages and must not be pulled into T02.
