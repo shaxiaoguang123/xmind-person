@@ -11,21 +11,52 @@ on:
       - 'test/**'
       - 'docs/**'
 
+permissions:
+  contents: read
+
 jobs:
-  markdown-core:
+  t02-web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+      - name: Architecture boundaries
+        run: npm run architecture:check
       - name: Lint
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
-      - name: Unit tests
+      - name: Unit and component tests
         run: npm test
       - name: Build
         run: npm run build
+      - name: Install browser CJK fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+      - name: Start Vite dev server
+        run: |
+          npm run dev --workspace @xmind-person/web > /tmp/t02-vite.log 2>&1 &
+          echo $! > /tmp/t02-vite.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat /tmp/t02-vite.log
+          exit 1
+      - name: Browser QA
+        run: npm run browser:qa
+      - name: Upload browser QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t02-browser-qa
+          path: artifacts/t02-browser
+          if-no-files-found: warn

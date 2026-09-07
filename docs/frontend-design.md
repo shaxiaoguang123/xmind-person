@@ -60,6 +60,42 @@ Motion communicates structural change only. Typical budgets: hover 100-150 ms, t
 
 Target WCAG 2.2 AA directionally: keyboard operability, visible focus indicators, ARIA labels, sensible focus order, keyboard-selectable nodes, perceivable state changes, reduced motion, and non-color-only state communication.
 
-## Explicit T00/T01 Non-Implementation
+## Stage Implementation Notes
 
-This document is a contract only. T00 and T01 do not implement React Flow, ELK, Canvas UI, panels, animation, or styling.
+### T00 / T01
+
+T00 established this contract. T01 remained framework-independent and implemented only the Markdown Core.
+
+### T02 Basic Canvas Slice
+
+T02 implements only the minimum visual slice needed to prove the Section Tree projection chain:
+
+- React + Vite runtime;
+- `@xyflow/react` as rendering/interaction adapter;
+- central full-height debug Canvas;
+- custom `HeadingNode` registered through `nodeTypes`;
+- H1-H6 class/token mapping using restrained typography and border weight;
+- top target / bottom source Handles with user connection disabled;
+- simple non-animated projected hierarchy edges;
+- basic pan, zoom, selection, drag, and initial debug `fitView`;
+- neutral surface/border/text/accent tokens;
+- visible focus styling and a non-color-only selected outline;
+- CJK-capable system font fallback stack.
+
+T02 does **not** implement the final Top Bar/sidebar/inspector/control system described above. Its small header only labels the debug fixture and is not the final editor chrome.
+
+### T02 Ephemeral State Boundary
+
+T02 drag position, selection, and viewport transform are ephemeral UI state. Node drag is intentionally not persisted, and a reload restores deterministic debug placement.
+
+The final Viewport Contract above remains authoritative: when viewport persistence is implemented at its scheduled stage, saved state must replace T02's unconditional debug `fitView` behavior.
+
+### T02 Visual Evidence
+
+Real Chrome screenshots used for T02 acceptance:
+
+- `docs/screenshots/t02-basic.png`
+- `docs/screenshots/t02-nested.png`
+- `docs/screenshots/t02-duplicate-mixed.png`
+
+The T02 visual target is clean/readable/debuggable rather than polished. T12-level motion and visual refinement remain deferred.

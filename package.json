@@ -5,9 +5,13 @@
     "apps/web"
   ],
   "scripts": {
+    "dev": "npm run dev --workspace @xmind-person/web",
+    "preview": "npm run preview --workspace @xmind-person/web",
     "lint": "npm run lint --workspace @xmind-person/web",
     "typecheck": "npm run typecheck --workspace @xmind-person/web",
     "test": "npm run test --workspace @xmind-person/web",
-    "build": "npm run build --workspace @xmind-person/web"
+    "build": "npm run build --workspace @xmind-person/web",
+    "architecture:check": "node scripts/check-boundaries.mjs",
+    "browser:qa": "node scripts/browser-qa.mjs"
   }
 }
