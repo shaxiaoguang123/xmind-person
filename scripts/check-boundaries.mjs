@@ -4,8 +4,15 @@ import ts from 'typescript';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const srcRoot = join(repoRoot, 'apps/web/src');
-const forbiddenCoreModules = new Set(['react', '@xyflow/react']);
+const forbiddenCoreModules = new Set([
+  'react',
+  'react-dom',
+  'react-markdown',
+  '@xyflow/react'
+]);
 const forbiddenBrowserGlobals = new Set(['window', 'document']);
+const forbiddenSecurityModule = 'rehype-raw';
+const forbiddenHtmlInjectionIdentifier = 'dangerouslySetInnerHTML';
 
 function filesUnder(directory) {
   return readdirSync(directory).flatMap((entry) => {
@@ -58,12 +65,22 @@ function moduleSpecifierFor(node) {
   return null;
 }
 
+function visitSource(file, visitor) {
+  const source = readFileSync(file, 'utf8');
+  const sourceFile = parseSource(file, source);
+
+  function visit(node) {
+    visitor(node);
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return source;
+}
+
 function assertCoreBoundary(directory, label) {
   for (const file of sourceFiles(directory)) {
-    const source = readFileSync(file, 'utf8');
-    const sourceFile = parseSource(file, source);
-
-    function visit(node) {
+    visitSource(file, (node) => {
       const moduleSpecifier = moduleSpecifierFor(node);
       if (
         moduleSpecifier !== null &&
@@ -82,11 +99,7 @@ function assertCoreBoundary(directory, label) {
           `${label}: ${relative(repoRoot, file)} references forbidden browser global ${node.text}`
         );
       }
-
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
+    });
   }
 }
 
@@ -100,13 +113,34 @@ assertCoreBoundary(
 );
 
 for (const file of sourceFiles(srcRoot)) {
-  const source = readFileSync(file, 'utf8');
+  const source = visitSource(file, (node) => {
+    const moduleSpecifier = moduleSpecifierFor(node);
+    if (moduleSpecifier === forbiddenSecurityModule) {
+      throw new Error(
+        `Markdown security violation: ${relative(repoRoot, file)} imports ${forbiddenSecurityModule}`
+      );
+    }
+
+    if (
+      ts.isIdentifier(node) &&
+      node.text === forbiddenHtmlInjectionIdentifier
+    ) {
+      throw new Error(
+        `Markdown security violation: ${relative(repoRoot, file)} uses an HTML injection escape hatch`
+      );
+    }
+  });
+
   if (/\.(?:skip|only)\s*\(/.test(source)) {
-    throw new Error(`Test integrity violation: ${relative(repoRoot, file)} uses .skip/.only`);
+    throw new Error(
+      `Test integrity violation: ${relative(repoRoot, file)} uses .skip/.only`
+    );
   }
 
   if (/\b(?:elkjs|dagre|childrenPlacement)\b/i.test(source)) {
-    throw new Error(`T02 scope violation: ${relative(repoRoot, file)} contains a deferred layout feature`);
+    throw new Error(
+      `T03 scope violation: ${relative(repoRoot, file)} contains a deferred layout feature`
+    );
   }
 }
 

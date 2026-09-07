@@ -12,19 +12,28 @@ on:
       - 'docs/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  t02-web:
+  t03-web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+      - name: Commit generated lockfile
+        if: github.event_name == 'push'
+        run: |
+          if [ -n "$(git status --porcelain package-lock.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore(ci): update npm lockfile for t03"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
       - name: Architecture boundaries
         run: npm run architecture:check
       - name: Lint
@@ -41,15 +50,15 @@ jobs:
           sudo apt-get install -y -qq fonts-noto-cjk
       - name: Start Vite dev server
         run: |
-          npm run dev --workspace @xmind-person/web > /tmp/t02-vite.log 2>&1 &
-          echo $! > /tmp/t02-vite.pid
+          npm run dev --workspace @xmind-person/web > /tmp/t03-vite.log 2>&1 &
+          echo $! > /tmp/t03-vite.pid
           for attempt in $(seq 1 40); do
             if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
               exit 0
             fi
             sleep 0.25
           done
-          cat /tmp/t02-vite.log
+          cat /tmp/t03-vite.log
           exit 1
       - name: Browser QA
         run: npm run browser:qa
@@ -57,6 +66,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: t02-browser-qa
-          path: artifacts/t02-browser
+          name: t03-browser-qa
+          path: artifacts/t03-browser
           if-no-files-found: warn

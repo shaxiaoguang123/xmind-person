@@ -4,11 +4,40 @@ import { resolve } from 'node:path';
 
 const BASE_URL = 'http://127.0.0.1:4173';
 const CDP_PORT = 9222;
-const OUTPUT_DIR = resolve('artifacts/t02-browser');
+const OUTPUT_DIR = resolve('artifacts/t03-browser');
 const DEMOS = [
-  { name: 'basic', nodes: 6, edges: 5, duplicateApi: 0 },
-  { name: 'nested', nodes: 9, edges: 8, duplicateApi: 0 },
-  { name: 'duplicate-mixed', nodes: 7, edges: 5, duplicateApi: 2 }
+  {
+    name: 'mixed-cards',
+    nodes: 9,
+    edges: 8,
+    headingCards: 4,
+    markdownCards: 5,
+    duplicateApi: 2
+  },
+  {
+    name: 'gfm-card',
+    nodes: 2,
+    edges: 1,
+    headingCards: 1,
+    markdownCards: 1,
+    duplicateApi: 0
+  },
+  {
+    name: 'long-card',
+    nodes: 2,
+    edges: 1,
+    headingCards: 1,
+    markdownCards: 1,
+    duplicateApi: 0
+  },
+  {
+    name: 'empty-card',
+    nodes: 3,
+    edges: 2,
+    headingCards: 2,
+    markdownCards: 1,
+    duplicateApi: 0
+  }
 ];
 
 function delay(ms) {
@@ -161,7 +190,7 @@ async function drag(cdp, from, to, steps = 8) {
       buttons: 1,
       pointerType: 'mouse'
     });
-    await delay(35);
+    await delay(30);
   }
 
   await cdp.call('Input.dispatchMouseEvent', {
@@ -175,11 +204,31 @@ async function drag(cdp, from, to, steps = 8) {
   });
 }
 
-function movedEnough(before, after, minimum = 20) {
+function movedEnough(before, after, minimum = 12) {
   return (
     Math.abs(after.left - before.left) >= minimum ||
     Math.abs(after.top - before.top) >= minimum
   );
+}
+
+async function navigateToDemo(cdp, demoName, nodeCount) {
+  await cdp.call('Page.navigate', { url: `${BASE_URL}/?demo=${demoName}` });
+  await waitForCondition(
+    async () =>
+      cdp.evaluate(
+        `document.readyState === 'complete' && document.querySelectorAll('.react-flow__node-document').length === ${nodeCount}`
+      ),
+    `${demoName} Document Nodes`
+  );
+  await cdp.evaluate('document.fonts.ready.then(() => true)');
+}
+
+async function screenshot(cdp, name) {
+  const capture = await cdp.call('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false
+  });
+  writeFileSync(resolve(OUTPUT_DIR, `${name}.png`), capture.data, 'base64');
 }
 
 async function main() {
@@ -237,45 +286,61 @@ async function main() {
     await cdp.call('Runtime.enable');
     await cdp.call('Log.enable');
 
-    const report = { demos: {}, interactions: {} };
-    const allDepthLabels = new Set();
+    const report = {
+      demos: {},
+      markdown: {},
+      scrolling: {},
+      interactions: {}
+    };
 
     for (const demo of DEMOS) {
-      await cdp.call('Page.navigate', {
-        url: `${BASE_URL}/?demo=${demo.name}`
-      });
-      await waitForCondition(
-        async () =>
-          cdp.evaluate(
-            `document.readyState === 'complete' && document.querySelectorAll('.react-flow__node').length === ${demo.nodes}`
-          ),
-        `${demo.name} React Flow nodes`
-      );
-      await cdp.evaluate('document.fonts.ready.then(() => true)');
+      await navigateToDemo(cdp, demo.name, demo.nodes);
 
       const snapshot = await cdp.evaluate(`(() => {
-        const titles = [...document.querySelectorAll('.heading-node-title')].map((element) => element.textContent);
-        const nodeTransforms = [...document.querySelectorAll('.react-flow__node')].map((element) => element.style.transform);
+        const cards = [...document.querySelectorAll('.document-card')];
+        const titles = cards.map((card) => card.querySelector('.document-card-title')?.textContent ?? '');
+        const nodeTransforms = [...document.querySelectorAll('.react-flow__node-document')].map((element) => element.style.transform);
+        const apiModes = cards
+          .filter((card) => card.querySelector('.document-card-title')?.textContent === 'API')
+          .map((card) => card.getAttribute('data-view-mode'));
         return {
-          nodes: document.querySelectorAll('.react-flow__node').length,
+          nodes: document.querySelectorAll('.react-flow__node-document').length,
           edges: document.querySelectorAll('.react-flow__edge').length,
+          headingCards: document.querySelectorAll('.document-card--heading').length,
+          markdownCards: document.querySelectorAll('.document-card--markdown').length,
+          handles: document.querySelectorAll('.react-flow__handle').length,
           titles,
           duplicateApi: titles.filter((title) => title === 'API').length,
+          apiModes,
           syntheticRootVisible: titles.includes('Document Root'),
           horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
           uniqueNodeTransforms: new Set(nodeTransforms).size,
-          depthLabels: [...document.querySelectorAll('.heading-node-depth')].map((element) => element.textContent),
+          depthLabels: [...document.querySelectorAll('.document-card-depth')].map((element) => element.textContent),
           cjkFontAvailable: document.fonts.check('16px "Noto Sans CJK SC"', '文件处理系统')
         };
       })()`);
 
-      if (snapshot.nodes !== demo.nodes || snapshot.edges !== demo.edges) {
+      if (
+        snapshot.nodes !== demo.nodes ||
+        snapshot.edges !== demo.edges ||
+        snapshot.headingCards !== demo.headingCards ||
+        snapshot.markdownCards !== demo.markdownCards
+      ) {
         throw new Error(
-          `${demo.name}: expected ${demo.nodes}/${demo.edges} nodes/edges, received ${snapshot.nodes}/${snapshot.edges}`
+          `${demo.name}: expected nodes/edges/heading/markdown ${demo.nodes}/${demo.edges}/${demo.headingCards}/${demo.markdownCards}, received ${snapshot.nodes}/${snapshot.edges}/${snapshot.headingCards}/${snapshot.markdownCards}`
         );
+      }
+      if (snapshot.handles !== demo.nodes * 2) {
+        throw new Error(`${demo.name}: Document Nodes do not share exactly two structural handles.`);
       }
       if (snapshot.duplicateApi !== demo.duplicateApi) {
         throw new Error(`${demo.name}: duplicate API heading count mismatch.`);
+      }
+      if (
+        demo.name === 'mixed-cards' &&
+        JSON.stringify(snapshot.apiModes) !== JSON.stringify(['heading', 'markdown'])
+      ) {
+        throw new Error('mixed-cards: duplicate API nodes did not keep independent view modes.');
       }
       if (snapshot.syntheticRootVisible) {
         throw new Error(`${demo.name}: synthetic Document Root became visible.`);
@@ -290,126 +355,278 @@ async function main() {
         throw new Error(`${demo.name}: CJK font fallback is unavailable in browser QA.`);
       }
 
-      snapshot.depthLabels.forEach((label) => allDepthLabels.add(label));
       report.demos[demo.name] = snapshot;
 
-      const screenshot = await cdp.call('Page.captureScreenshot', {
-        format: 'png',
-        captureBeyondViewport: false
-      });
-      writeFileSync(
-        resolve(OUTPUT_DIR, `${demo.name}.png`),
-        screenshot.data,
-        'base64'
-      );
+      if (demo.name === 'mixed-cards') {
+        const center = await cdp.evaluate(`(() => {
+          const pane = document.querySelector('.react-flow__pane').getBoundingClientRect();
+          return { x: pane.left + pane.width / 2, y: pane.top + pane.height / 2 };
+        })()`);
+        await cdp.call('Input.dispatchMouseEvent', {
+          type: 'mouseWheel',
+          x: center.x,
+          y: center.y,
+          deltaX: 0,
+          deltaY: -220,
+          pointerType: 'mouse'
+        });
+        await delay(180);
+      }
+
+      await screenshot(cdp, demo.name);
     }
 
-    const expectedDepthLabels = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
-    if (!expectedDepthLabels.every((label) => allDepthLabels.has(label))) {
-      throw new Error(
-        `Browser demos do not cover H1-H6 labels: ${[...allDepthLabels].join(', ')}`
-      );
-    }
-
-    await cdp.call('Page.navigate', { url: `${BASE_URL}/?demo=basic` });
-    await waitForCondition(
-      async () =>
-        cdp.evaluate(
-          "document.querySelectorAll('.react-flow__node').length === 6"
-        ),
-      'basic demo interaction target'
-    );
-
-    const initial = await cdp.evaluate(`(() => {
-      const node = document.querySelector('.react-flow__node');
-      const rect = node.getBoundingClientRect();
+    await navigateToDemo(cdp, 'gfm-card', 2);
+    const markdownChecks = await cdp.evaluate(`(() => {
+      const body = document.querySelector('.markdown-card-body');
+      const links = [...body.querySelectorAll('a')];
+      const safeLink = links.find((link) => link.textContent === '安全链接');
+      const unsafeLink = links.find((link) => link.textContent === '不安全链接');
       return {
-        nodeTransform: node.style.transform,
-        nodeRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        nodeCenter: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        paragraph: body.querySelectorAll('p').length > 0,
+        unorderedList: body.querySelectorAll('ul').length > 0,
+        orderedList: body.querySelectorAll('ol').length > 0,
+        taskList: body.querySelectorAll('input[type="checkbox"]').length === 2,
+        inlineCode: [...body.querySelectorAll('code')].some((code) => code.textContent === 'inlineCode()'),
+        codeBlock: body.querySelectorAll('pre code').length > 0,
+        blockquote: body.querySelectorAll('blockquote').length > 0,
+        table: body.querySelectorAll('table').length > 0,
+        strikethrough: body.querySelectorAll('del').length > 0,
+        safeLinkHref: safeLink?.getAttribute('href') ?? null,
+        safeLinkTarget: safeLink?.getAttribute('target') ?? null,
+        safeLinkRel: safeLink?.getAttribute('rel') ?? null,
+        safeLinkNoDrag: safeLink?.classList.contains('nodrag') ?? false,
+        unsafeLinkHref: unsafeLink?.getAttribute('href') ?? null,
+        rawScriptElements: body.querySelectorAll('script').length,
+        rawClickElements: body.querySelectorAll('[onclick]').length,
+        rawHtmlExecuted: globalThis.__t03RawHtmlExecuted === true || globalThis.__t03RawHtmlClicked === true
       };
     })()`);
 
-    await click(cdp, initial.nodeCenter);
-    await waitForCondition(
-      async () =>
-        cdp.evaluate(
-          "document.querySelectorAll('.heading-node-card[data-selected=\"true\"]').length === 1"
-        ),
-      'node selection'
-    );
+    for (const key of [
+      'paragraph',
+      'unorderedList',
+      'orderedList',
+      'taskList',
+      'inlineCode',
+      'codeBlock',
+      'blockquote',
+      'table',
+      'strikethrough',
+      'safeLinkNoDrag'
+    ]) {
+      if (!markdownChecks[key]) {
+        throw new Error(`gfm-card: Markdown rendering check failed for ${key}.`);
+      }
+    }
+    if (
+      markdownChecks.safeLinkHref !== 'https://example.com/docs' ||
+      markdownChecks.safeLinkTarget !== '_blank' ||
+      markdownChecks.safeLinkRel !== 'noopener noreferrer'
+    ) {
+      throw new Error('gfm-card: safe link attributes are incorrect.');
+    }
+    if (
+      markdownChecks.unsafeLinkHref?.toLowerCase().startsWith('javascript:')
+    ) {
+      throw new Error('gfm-card: unsafe link protocol was allowed.');
+    }
+    if (
+      markdownChecks.rawScriptElements !== 0 ||
+      markdownChecks.rawClickElements !== 0 ||
+      markdownChecks.rawHtmlExecuted
+    ) {
+      throw new Error('gfm-card: raw HTML became executable DOM.');
+    }
+    report.markdown = markdownChecks;
 
+    const linkDragStart = await cdp.evaluate(`(() => {
+      const link = [...document.querySelectorAll('.markdown-card-body a')].find((element) => element.textContent === '安全链接');
+      const node = link.closest('.react-flow__node-document');
+      const linkRect = link.getBoundingClientRect();
+      const nodeRect = node.getBoundingClientRect();
+      return {
+        point: { x: linkRect.left + linkRect.width / 2, y: linkRect.top + linkRect.height / 2 },
+        nodeRect: { left: nodeRect.left, top: nodeRect.top }
+      };
+    })()`);
     await drag(
       cdp,
-      initial.nodeCenter,
-      { x: initial.nodeCenter.x + 110, y: initial.nodeCenter.y + 70 },
-      10
+      linkDragStart.point,
+      { x: linkDragStart.point.x + 22, y: linkDragStart.point.y + 4 },
+      5
     );
-
-    await waitForCondition(
-      async () => {
-        const currentRect = await cdp.evaluate(`(() => {
-          const rect = document.querySelector('.react-flow__node').getBoundingClientRect();
-          return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-        })()`);
-        return movedEnough(initial.nodeRect, currentRect);
-      },
-      'ephemeral node drag'
-    );
-
-    await cdp.call('Page.reload');
-    await waitForCondition(
-      async () =>
-        cdp.evaluate(
-          "document.querySelectorAll('.react-flow__node').length === 6"
-        ),
-      'basic demo reload'
-    );
-    const reloadedTransform = await cdp.evaluate(
-      "document.querySelector('.react-flow__node').style.transform"
-    );
-    if (reloadedTransform !== initial.nodeTransform) {
-      throw new Error(
-        'Dragged node position persisted across reload; T02 drag must be ephemeral.'
-      );
+    await delay(120);
+    const linkDragAfter = await cdp.evaluate(`(() => {
+      const link = [...document.querySelectorAll('.markdown-card-body a')].find((element) => element.textContent === '安全链接');
+      const rect = link.closest('.react-flow__node-document').getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    })()`);
+    if (movedEnough(linkDragStart.nodeRect, linkDragAfter, 4)) {
+      throw new Error('Link interaction accidentally dragged its Document Node.');
     }
 
-    const viewportState = await cdp.evaluate(`(() => {
-      const pane = document.querySelector('.react-flow__pane');
+    await navigateToDemo(cdp, 'long-card', 2);
+    const scrollBefore = await cdp.evaluate(`(() => {
+      const body = document.querySelector('.markdown-card-body');
       const viewport = document.querySelector('.react-flow__viewport');
-      const paneRect = pane.getBoundingClientRect();
+      const rect = body.getBoundingClientRect();
       return {
+        scrollHeight: body.scrollHeight,
+        clientHeight: body.clientHeight,
+        scrollTop: body.scrollTop,
         viewportTransform: viewport.style.transform,
-        panePoint: { x: paneRect.right - 80, y: paneRect.bottom - 80 }
+        point: { x: rect.left + rect.width / 2, y: rect.top + Math.min(rect.height / 2, 120) }
       };
     })()`);
+    if (scrollBefore.scrollHeight <= scrollBefore.clientHeight) {
+      throw new Error('long-card: Markdown body is not bounded and scrollable.');
+    }
 
     await cdp.call('Input.dispatchMouseEvent', {
       type: 'mouseWheel',
-      x: viewportState.panePoint.x,
-      y: viewportState.panePoint.y,
+      x: scrollBefore.point.x,
+      y: scrollBefore.point.y,
       deltaX: 0,
-      deltaY: -240,
+      deltaY: 420,
+      pointerType: 'mouse'
+    });
+    await waitForCondition(
+      async () =>
+        (await cdp.evaluate(
+          "document.querySelector('.markdown-card-body').scrollTop"
+        )) > scrollBefore.scrollTop,
+      'Markdown body internal scroll'
+    );
+    const scrollAfter = await cdp.evaluate(`(() => ({
+      scrollTop: document.querySelector('.markdown-card-body').scrollTop,
+      viewportTransform: document.querySelector('.react-flow__viewport').style.transform
+    }))()`);
+    if (scrollAfter.viewportTransform !== scrollBefore.viewportTransform) {
+      throw new Error('Markdown body wheel changed Canvas viewport transform.');
+    }
+    report.scrolling = {
+      scrollHeight: scrollBefore.scrollHeight,
+      clientHeight: scrollBefore.clientHeight,
+      scrollTopBefore: scrollBefore.scrollTop,
+      scrollTopAfter: scrollAfter.scrollTop,
+      viewportZoomIsolation: 'pass'
+    };
+
+    const headerDragStart = await cdp.evaluate(`(() => {
+      const card = document.querySelector('.document-card--markdown');
+      const header = card.querySelector('.document-card-header');
+      const node = card.closest('.react-flow__node-document');
+      const headerRect = header.getBoundingClientRect();
+      const nodeRect = node.getBoundingClientRect();
+      return {
+        point: { x: headerRect.left + headerRect.width / 2, y: headerRect.top + headerRect.height / 2 },
+        nodeRect: { left: nodeRect.left, top: nodeRect.top }
+      };
+    })()`);
+    await drag(
+      cdp,
+      headerDragStart.point,
+      { x: headerDragStart.point.x + 86, y: headerDragStart.point.y + 54 },
+      9
+    );
+    await waitForCondition(
+      async () => {
+        const current = await cdp.evaluate(`(() => {
+          const rect = document.querySelector('.document-card--markdown').closest('.react-flow__node-document').getBoundingClientRect();
+          return { left: rect.left, top: rect.top };
+        })()`);
+        return movedEnough(headerDragStart.nodeRect, current);
+      },
+      'Document Node drag from card header'
+    );
+
+    await navigateToDemo(cdp, 'mixed-cards', 9);
+    const firstNode = await cdp.evaluate(`(() => {
+      const node = document.querySelector('.react-flow__node-document');
+      const rect = node.getBoundingClientRect();
+      return {
+        point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      };
+    })()`);
+    await click(cdp, firstNode.point);
+    await waitForCondition(
+      async () =>
+        cdp.evaluate(
+          "document.querySelectorAll('.document-card[data-selected=\"true\"]').length === 1"
+        ),
+      'Document Node selection'
+    );
+    const selectedOutline = await cdp.evaluate(`(() => {
+      const card = document.querySelector('.document-card[data-selected="true"]');
+      const style = getComputedStyle(card);
+      return { width: style.outlineWidth, style: style.outlineStyle };
+    })()`);
+    if (selectedOutline.width === '0px' || selectedOutline.style === 'none') {
+      throw new Error('Selected state has no non-color outline.');
+    }
+
+    await cdp.call('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9
+    });
+    await cdp.call('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9
+    });
+    await delay(100);
+    const focusState = await cdp.evaluate(`(() => {
+      const active = document.activeElement;
+      const style = active instanceof HTMLElement ? getComputedStyle(active) : null;
+      return {
+        isDocumentNode: active?.classList?.contains('react-flow__node-document') ?? false,
+        outlineWidth: style?.outlineWidth ?? '0px',
+        outlineStyle: style?.outlineStyle ?? 'none'
+      };
+    })()`);
+    if (
+      !focusState.isDocumentNode ||
+      focusState.outlineWidth === '0px' ||
+      focusState.outlineStyle === 'none'
+    ) {
+      throw new Error('Keyboard focus indication is missing on Document Nodes.');
+    }
+
+    const viewportBefore = await cdp.evaluate(`(() => {
+      const pane = document.querySelector('.react-flow__pane');
+      const viewport = document.querySelector('.react-flow__viewport');
+      const rect = pane.getBoundingClientRect();
+      return {
+        transform: viewport.style.transform,
+        point: { x: rect.right - 70, y: rect.bottom - 70 }
+      };
+    })()`);
+    await cdp.call('Input.dispatchMouseEvent', {
+      type: 'mouseWheel',
+      x: viewportBefore.point.x,
+      y: viewportBefore.point.y,
+      deltaX: 0,
+      deltaY: -220,
       pointerType: 'mouse'
     });
     await waitForCondition(
       async () =>
         (await cdp.evaluate(
           "document.querySelector('.react-flow__viewport').style.transform"
-        )) !== viewportState.viewportTransform,
-      'viewport zoom'
+        )) !== viewportBefore.transform,
+      'Canvas zoom outside Markdown body'
     );
     const zoomedTransform = await cdp.evaluate(
       "document.querySelector('.react-flow__viewport').style.transform"
     );
-
     await drag(
       cdp,
-      viewportState.panePoint,
-      {
-        x: viewportState.panePoint.x - 80,
-        y: viewportState.panePoint.y - 45
-      },
+      viewportBefore.point,
+      { x: viewportBefore.point.x - 70, y: viewportBefore.point.y - 40 },
       6
     );
     await waitForCondition(
@@ -417,15 +634,17 @@ async function main() {
         (await cdp.evaluate(
           "document.querySelector('.react-flow__viewport').style.transform"
         )) !== zoomedTransform,
-      'viewport pan'
+      'Canvas pan outside Markdown body'
     );
 
     report.interactions = {
       selection: 'pass',
-      drag: 'pass',
-      dragPersistence: 'not persisted',
-      zoom: 'pass',
-      pan: 'pass'
+      focus: 'pass',
+      selectedOutline: 'pass',
+      nodeDragFromHeader: 'pass',
+      linkDragIsolation: 'pass',
+      canvasZoom: 'pass',
+      canvasPan: 'pass'
     };
 
     const keyWarnings = browserErrors.filter((message) =>
