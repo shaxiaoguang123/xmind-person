@@ -13,7 +13,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { VisualGraph } from '../../core/graph';
 import { EditorCanvas } from './EditorCanvas';
-import { HeadingNodeView } from './nodes/HeadingNode';
 
 class ResizeObserverStub implements ResizeObserver {
   observe(): void {}
@@ -78,6 +77,7 @@ const graph: VisualGraph = {
       sectionId: 'section-a',
       headingDepth: 2,
       title: '上传文件',
+      localBody: '支持上传。',
       viewMode: 'heading',
       position: { x: 0, y: 0 },
       treeDepth: 0,
@@ -88,8 +88,9 @@ const graph: VisualGraph = {
       sectionId: 'section-b',
       headingDepth: 3,
       title: 'API',
+      localBody: '正文 A。',
       viewMode: 'heading',
-      position: { x: 260, y: 132 },
+      position: { x: 440, y: 380 },
       treeDepth: 1,
       documentOrder: 1
     },
@@ -98,8 +99,9 @@ const graph: VisualGraph = {
       sectionId: 'section-c',
       headingDepth: 3,
       title: 'API',
-      viewMode: 'heading',
-      position: { x: 260, y: 264 },
+      localBody: '正文 B。',
+      viewMode: 'markdown',
+      position: { x: 440, y: 760 },
       treeDepth: 1,
       documentOrder: 2
     }
@@ -120,57 +122,39 @@ const graph: VisualGraph = {
   ]
 };
 
-describe('HeadingNode', () => {
-  it.each([1, 2, 3, 4, 5, 6] as const)('renders H%i theme label and title', (headingDepth) => {
-    render(
-      <HeadingNodeView
-        data={{
-          sectionId: `section-${headingDepth}`,
-          title: `Depth ${headingDepth}`,
-          headingDepth,
-          viewMode: 'heading'
-        }}
-        selected={false}
-      />
-    );
-
-    expect(screen.getByText(`H${headingDepth}`)).toBeInTheDocument();
-    expect(screen.getByLabelText(`H${headingDepth} Depth ${headingDepth}`)).toHaveClass(
-      `heading-node--h${headingDepth}`
-    );
-  });
-
-  it('exposes selected state with a non-color-only hook', () => {
-    render(
-      <HeadingNodeView
-        data={{
-          sectionId: 'selected',
-          title: 'Selected node',
-          headingDepth: 2,
-          viewMode: 'heading'
-        }}
-        selected
-      />
-    );
-
-    expect(screen.getByLabelText('H2 Selected node')).toHaveAttribute(
-      'data-selected',
-      'true'
-    );
-  });
-});
-
 describe('EditorCanvas', () => {
-  it('mounts React Flow and renders duplicate titles independently', () => {
+  it('mounts one unified Document Node type and renders duplicate titles independently', () => {
     const { container } = render(
       <div style={{ width: 900, height: 640 }}>
         <EditorCanvas graph={graph} />
       </div>
     );
 
-    expect(screen.getByLabelText('Section hierarchy debug canvas')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Document node presentation debug canvas')
+    ).toBeInTheDocument();
     expect(screen.getAllByText('API')).toHaveLength(2);
-    expect(container.querySelectorAll('.react-flow__node')).toHaveLength(3);
+    expect(container.querySelectorAll('.react-flow__node-document')).toHaveLength(3);
+    expect(container.querySelectorAll('.document-card--heading')).toHaveLength(2);
+    expect(container.querySelectorAll('.document-card--markdown')).toHaveLength(1);
+    expect(screen.getByText('正文 B。')).toBeInTheDocument();
+    expect(screen.queryByText('正文 A。')).not.toBeInTheDocument();
+  });
+
+  it('preserves Stable React Flow IDs while duplicate titles use different view modes', () => {
+    const { container } = render(
+      <div style={{ width: 900, height: 640 }}>
+        <EditorCanvas graph={graph} />
+      </div>
+    );
+
+    const firstApi = container.querySelector('[data-id="section-b"]');
+    const secondApi = container.querySelector('[data-id="section-c"]');
+
+    expect(firstApi).not.toBeNull();
+    expect(secondApi).not.toBeNull();
+    expect(firstApi?.querySelector('[data-view-mode="heading"]')).not.toBeNull();
+    expect(secondApi?.querySelector('[data-view-mode="markdown"]')).not.toBeNull();
   });
 
   it('supports basic node selection as ephemeral UI state', async () => {
@@ -180,7 +164,7 @@ describe('EditorCanvas', () => {
       </div>
     );
     const targetNode = container.querySelector('[data-id="section-b"]');
-    const targetCard = targetNode?.querySelector('.heading-node-card');
+    const targetCard = targetNode?.querySelector('.document-card');
 
     expect(targetNode).not.toBeNull();
     expect(targetCard).not.toBeNull();

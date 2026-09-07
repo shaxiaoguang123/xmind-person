@@ -9,13 +9,13 @@ import { useEffect, useMemo } from 'react';
 import {
   toReactFlowEdges,
   toReactFlowNodes,
-  type HeadingFlowNode
+  type DocumentFlowNode
 } from '../../adapters/react-flow';
 import type { VisualGraph } from '../../core/graph';
-import { HeadingNode } from './nodes/HeadingNode';
+import { DocumentNode } from './nodes/DocumentNode';
 
 const nodeTypes: NodeTypes = {
-  heading: HeadingNode
+  document: DocumentNode
 };
 
 interface EditorCanvasProps {
@@ -25,7 +25,7 @@ interface EditorCanvasProps {
 export function EditorCanvas({ graph }: EditorCanvasProps) {
   const projectedNodes = useMemo(() => toReactFlowNodes(graph), [graph]);
   const projectedEdges = useMemo(() => toReactFlowEdges(graph), [graph]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<HeadingFlowNode>(
+  const [nodes, setNodes, onNodesChange] = useNodesState<DocumentFlowNode>(
     projectedNodes
   );
 
@@ -45,11 +45,11 @@ export function EditorCanvas({ graph }: EditorCanvasProps) {
       panOnDrag
       zoomOnScroll
       zoomOnPinch
-      minZoom={0.35}
+      minZoom={0.3}
       maxZoom={1.8}
       fitView
-      fitViewOptions={{ padding: 0.2, maxZoom: 1.15 }}
-      aria-label="Section hierarchy debug canvas"
+      fitViewOptions={{ padding: 0.18, maxZoom: 1 }}
+      aria-label="Document node presentation debug canvas"
     >
       <Background gap={24} size={1} />
     </ReactFlow>
