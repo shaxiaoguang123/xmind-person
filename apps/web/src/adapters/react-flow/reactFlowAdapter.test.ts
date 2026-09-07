@@ -40,7 +40,7 @@ const graph: VisualGraph = {
 };
 
 describe('React Flow adapter', () => {
-  it('preserves Stable IDs and uses one Document Node type for every view mode', () => {
+  it('preserves Stable IDs and uses one focusable Document Node type for every view mode', () => {
     const nodes = toReactFlowNodes(graph);
 
     expect(nodes.map((node) => node.id)).toEqual(['stable-a', 'stable-b']);
@@ -49,6 +49,7 @@ describe('React Flow adapter', () => {
       'stable-b'
     ]);
     expect(nodes.every((node) => node.type === 'document')).toBe(true);
+    expect(nodes.every((node) => node.focusable === true)).toBe(true);
   });
 
   it('passes Local Body and viewMode through without changing React Flow identity', () => {
@@ -57,6 +58,7 @@ describe('React Flow adapter', () => {
     expect(nodes[0]).toMatchObject({
       id: 'stable-a',
       type: 'document',
+      focusable: true,
       data: {
         sectionId: 'stable-a',
         localBody: 'Body A.',
@@ -66,6 +68,7 @@ describe('React Flow adapter', () => {
     expect(nodes[1]).toMatchObject({
       id: 'stable-b',
       type: 'document',
+      focusable: true,
       data: {
         sectionId: 'stable-b',
         localBody: '- one\n- two',
