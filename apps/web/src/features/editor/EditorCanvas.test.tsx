@@ -9,7 +9,7 @@ import {
   screen,
   waitFor
 } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { VisualGraph } from '../../core/graph';
 import { EditorCanvas } from './EditorCanvas';
@@ -20,6 +20,12 @@ class ResizeObserverStub implements ResizeObserver {
   unobserve(): void {}
   disconnect(): void {}
 }
+
+const originalResizeObserver = globalThis.ResizeObserver;
+const originalGetBoundingClientRectDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'getBoundingClientRect'
+);
 
 beforeAll(() => {
   globalThis.ResizeObserver = ResizeObserverStub;
@@ -41,6 +47,24 @@ beforeAll(() => {
       };
     }
   });
+});
+
+afterAll(() => {
+  if (originalResizeObserver === undefined) {
+    Reflect.deleteProperty(globalThis, 'ResizeObserver');
+  } else {
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+
+  if (originalGetBoundingClientRectDescriptor === undefined) {
+    Reflect.deleteProperty(HTMLElement.prototype, 'getBoundingClientRect');
+  } else {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      'getBoundingClientRect',
+      originalGetBoundingClientRectDescriptor
+    );
+  }
 });
 
 afterEach(() => {
