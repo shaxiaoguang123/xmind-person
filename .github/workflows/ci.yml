@@ -3,12 +3,29 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+      - 'refactor/**'
+      - 'test/**'
+      - 'docs/**'
 
 jobs:
-  placeholder:
+  markdown-core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: T00 placeholder
-        run: echo "CI skeleton initialized"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
