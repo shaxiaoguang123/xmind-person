@@ -66,7 +66,7 @@ describe('DocumentNode presentation', () => {
 
     const body = container.querySelector('[data-markdown-body="true"]');
     expect(body).not.toBeNull();
-    if (body === null) {
+    if (!(body instanceof HTMLElement)) {
       return;
     }
 
