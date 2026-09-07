@@ -5,8 +5,8 @@ Specification and stage gates are authoritative. A stage begins only after the p
 | Stage | Scope | Gate |
 | --- | --- | --- |
 | T00 | Project Constitution + Product Contract | **PASS** |
-| T01 | Markdown -> mdast -> Section Tree -> Stable Node ID mapping | Next |
-| T02 | Section Tree -> Basic React Flow Graph | Blocked by T01 |
+| T01 | Markdown -> mdast -> Section Tree -> Stable Node ID mapping | **PASS** |
+| T02 | Section Tree -> Basic React Flow Graph | Recommended next; not started |
 | T03 | Heading Card / Markdown Card | Blocked by T02 |
 | T04 | Main Flow Auto Layout | Blocked by T03 |
 | T05 | LEFT / RIGHT Side Detail Multi-pass Layout | Blocked by T04 |
@@ -24,20 +24,9 @@ Specification and stage gates are authoritative. A stage begins only after the p
 
 ## T00 Closure
 
-T00 owns only project contracts and delivery infrastructure. Its closure requires:
+T00 owns only project contracts and delivery infrastructure. It is complete and merged to `main` through PR #1.
 
-- `AGENTS.md` project invariants.
-- Product requirement catalog and traceability matrix.
-- Architecture, domain, frontend design, interaction, API, test, and Git contracts.
-- ADR directory, ADR template, and accepted core decisions.
-- `plan.md` and `tasks.md` stage gates.
-- Markdown fixture directory.
-- CI skeleton that can execute on pull requests.
-- Independent QA review confirming no business implementation was introduced.
-
-T00 is marked PASS after these artifacts are present and internally consistent.
-
-## T01 Scope
+## T01 Scope and Closure
 
 T01 implements only the Markdown domain/core pipeline:
 
@@ -50,9 +39,26 @@ Markdown Source
   -> Stable Node ID Mapping
 ```
 
+Implemented under `apps/web/src/core/markdown/` with real Markdown fixtures, strict TypeScript, Vitest, ESLint, and stage CI.
+
 T01 explicitly excludes React Flow, ELK, Canvas, node UI, toolbars, inspectors, backend, database, authentication, animation, flow-edge editing, and automatic layout.
 
-T01 stage details and AC-T01-01 through AC-T01-20 are tracked in `tasks.md`.
+Gate evidence:
+
+- parser/section/tree/stable-ID implementation complete;
+- required fixture coverage complete;
+- 20/20 T01 unit tests PASS on the implementation head;
+- lint PASS;
+- typecheck PASS;
+- build PASS;
+- independent QA PASS in `docs/qa/t01-review.md`;
+- T01 requirements/semantics synchronized to documentation.
+
+A T01 PR is created only after the final documentation-synchronized branch head repeats the CI gate successfully. Passing T01 does not authorize automatic T02 implementation in the same branch.
+
+## Recommended T02 Boundary
+
+The next task may consume the stable Section Tree and project it into a **basic** React Flow graph. T02 should not introduce ELK auto-layout, side-detail multi-pass layout, polished Markdown Cards, backend persistence, or unrelated later-stage features.
 
 ## Scope Control
 

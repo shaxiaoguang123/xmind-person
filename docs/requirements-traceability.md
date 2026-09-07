@@ -101,6 +101,35 @@ This matrix maps product requirements to the contracts, implementation stages, a
 | PROCESS-008 | T00 contracts | T00 | T00 QA |
 | PROCESS-009 | `product-spec.md` | T00-T16 | scope review |
 
-## T01 Acceptance Trace
+## T01 Requirement Evidence
 
-T01 acceptance criteria AC-T01-01 through AC-T01-20 are tracked in `tasks.md`. Their implementation evidence is expected to live under the Markdown core source/tests and `fixtures/markdown/` on `feat/t01-markdown-section-tree`.
+| Requirement / AC | Implementation Evidence | Verification Evidence |
+| --- | --- | --- |
+| MD-001 / AC-T01-01 | `parseMarkdown.ts` uses unified + remark-parse + remark-gfm; `extractSections.ts` consumes mdast headings | parser code review; `parseMarkdown.test.ts` |
+| MD-002 / AC-T01-02 | mdast `heading.depth` is copied unchanged | ATX H1-H6 test |
+| MD-009 / AC-T01-03 | Setext is delegated to remark parsing | `setext-headings.md`; H1/H2 test |
+| MD-010 / AC-T01-04 | no ASCII/title-specific hierarchy logic | `chinese-headings.md`; Chinese depth/title test |
+| MD-007 / AC-T01-05 | every structural section has distinct mapping key and opaque ID | duplicate-heading ID test |
+| MD-008 / AC-T01-06 | only mdast Heading nodes are sections | fenced-code fixture and Local Body/parser tests |
+| MD-003, MD-014 / AC-T01-07 | stack pops until nearest prior smaller depth | `skipped-depth.md`; hierarchy test |
+| MD-011 / AC-T01-08 | no-body interval yields empty string without dropping section | `empty-section.md`; empty-body test |
+| MD-005 / AC-T01-09 | AST nodes before first heading are sliced into `preamble` | `preamble.md`; preamble test |
+| MD-004 / AC-T01-10 | Local Body stops at next root heading and is source-sliced via offsets | `local-body.md`; exact body/exclusion tests |
+| MD-014 / AC-T01-11 | synthetic document root has no required heading depth | `mixed-top-level-depth.md`; root structure test |
+| MD-006 / AC-T01-12 | Node ID factory defaults to UUID; title is not identity | title-decoupling test; ADR-0003 |
+| MD-006 / AC-T01-13 | `StableNodeIdMapping.byProjectionKey` supports prior-ID reuse | title/body re-projection test whose fallback factory throws |
+| MD-012 / AC-T01-14 | remark-gfm enabled; original Local Body source retained | task-list/strikethrough/autolink/table assertions plus GFM AST test |
+| MD-013 / AC-T01-15 | unist/mdast positions copied and offsets used for slicing | source-location unit test |
+| TEST-002 / AC-T01-16 | 3 Markdown-core test files | GitHub Actions: 20/20 tests PASS |
+| TEST-005 / AC-T01-17 | strict TypeScript check | GitHub Actions typecheck PASS |
+| TEST-005 / AC-T01-18 | ESLint stage gate | GitHub Actions lint PASS |
+| TEST-005 / AC-T01-19 | declaration-producing TypeScript build | GitHub Actions build PASS |
+| PROCESS-005, PROCESS-009 / AC-T01-20 | branch diff contains Markdown core/config/fixtures/docs only | `docs/qa/t01-review.md` scope review PASS |
+
+## T01 QA / Gate Evidence
+
+- Semantics: `docs/markdown-section-semantics.md`.
+- Independent review: `docs/qa/t01-review.md`.
+- Task acceptance state: `tasks.md`.
+- CI: `.github/workflows/ci.yml` executes install, lint, typecheck, unit tests, and build on task branches and PRs.
+- Final PR creation is permitted only after the documentation-synchronized branch head repeats the full CI gate successfully.
