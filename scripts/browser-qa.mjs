@@ -60,7 +60,7 @@ function chromeExecutable() {
   throw new Error('No Chrome/Chromium executable is available on the runner.');
 }
 
-async function waitForJson(url, attempts = 80) {
+async function waitForJson(url, attempts = 160) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url);
@@ -270,6 +270,8 @@ async function zoomMixedForEvidence(cdp) {
 
 async function main() {
   mkdirSync(OUTPUT_DIR, { recursive: true });
+  const chromeProfile = resolve('/tmp', `t03-chrome-${process.pid}`);
+  mkdirSync(chromeProfile, { recursive: true });
   const browserErrors = [];
   const chrome = spawn(
     chromeExecutable(),
@@ -277,7 +279,11 @@ async function main() {
       '--headless=new',
       '--no-sandbox',
       '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--remote-debugging-address=127.0.0.1',
       `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${chromeProfile}`,
       '--window-size=1440,1000',
       'about:blank'
     ],
