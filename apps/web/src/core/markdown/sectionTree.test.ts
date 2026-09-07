@@ -94,9 +94,22 @@ describe('Section Tree semantics', () => {
     const gfm = tree.children[0];
 
     expect(gfm?.localBody).toContain('- [x] parsed task');
+    expect(gfm?.localBody).toContain('- [ ] remaining task');
     expect(gfm?.localBody).toContain('~~deprecated~~');
+    expect(gfm?.localBody).toContain('https://example.com');
     expect(gfm?.localBody).toContain('| Name | Status |');
     expect(gfm?.localBody).not.toContain('### Child');
+  });
+
+  it('preserves fenced code as Local Body without promoting inner hashes', () => {
+    const { tree } = draftTree('code-fence-heading.md');
+    const example = tree.children[0];
+
+    expect(example?.localBody).toContain('```md');
+    expect(example?.localBody).toContain('# 这不是 Heading');
+    expect(example?.localBody).toContain('## 这也不是 Heading');
+    expect(example?.children).toEqual([]);
+    expect(tree.children[1]?.title).toBe('Real Heading');
   });
 
   it('handles a long Local Body without absorbing the child section', () => {
