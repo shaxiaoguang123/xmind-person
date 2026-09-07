@@ -41,7 +41,7 @@ export function EditorCanvas({ graph }: EditorCanvasProps) {
       onNodesChange={onNodesChange}
       nodesConnectable={false}
       nodesDraggable
-      nodesFocusable
+      nodesFocusable={false}
       elementsSelectable
       panOnDrag
       zoomOnScroll

@@ -123,7 +123,7 @@ const graph: VisualGraph = {
 };
 
 describe('EditorCanvas', () => {
-  it('mounts one unified focusable Document Node type and renders duplicate titles independently', () => {
+  it('mounts one unified Document Node type with one shell focus target per node', () => {
     const { container } = render(
       <div style={{ width: 900, height: 640 }}>
         <EditorCanvas graph={graph} />
@@ -135,7 +135,8 @@ describe('EditorCanvas', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText('API')).toHaveLength(2);
     expect(container.querySelectorAll('.react-flow__node-document')).toHaveLength(3);
-    expect(container.querySelector('[data-id="section-a"]')).toHaveAttribute(
+    expect(container.querySelectorAll('.document-node-shell[tabindex="0"]')).toHaveLength(3);
+    expect(container.querySelector('[data-id="section-a"]')).not.toHaveAttribute(
       'tabindex',
       '0'
     );

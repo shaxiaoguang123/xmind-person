@@ -6,57 +6,19 @@ const BASE_URL = 'http://127.0.0.1:4173';
 const CDP_PORT = 9222;
 const OUTPUT_DIR = resolve('artifacts/t03-browser');
 const DEMOS = [
-  {
-    name: 'mixed-cards',
-    nodes: 9,
-    edges: 8,
-    headingCards: 4,
-    markdownCards: 5,
-    duplicateApi: 2
-  },
-  {
-    name: 'gfm-card',
-    nodes: 2,
-    edges: 1,
-    headingCards: 1,
-    markdownCards: 1,
-    duplicateApi: 0
-  },
-  {
-    name: 'long-card',
-    nodes: 2,
-    edges: 1,
-    headingCards: 1,
-    markdownCards: 1,
-    duplicateApi: 0
-  },
-  {
-    name: 'empty-card',
-    nodes: 3,
-    edges: 2,
-    headingCards: 2,
-    markdownCards: 1,
-    duplicateApi: 0
-  }
+  ['mixed-cards', 9, 8, 4, 5, 2],
+  ['gfm-card', 2, 1, 1, 1, 0],
+  ['long-card', 2, 1, 1, 1, 0],
+  ['empty-card', 3, 2, 2, 1, 0]
 ];
 
-function delay(ms) {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-}
+const delay = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 
 function chromeExecutable() {
-  for (const candidate of [
-    'google-chrome',
-    'google-chrome-stable',
-    'chromium-browser',
-    'chromium'
-  ]) {
+  for (const candidate of ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium']) {
     const result = spawnSync('which', [candidate], { encoding: 'utf8' });
-    if (result.status === 0 && result.stdout.trim() !== '') {
-      return result.stdout.trim();
-    }
+    if (result.status === 0 && result.stdout.trim()) return result.stdout.trim();
   }
-
   throw new Error('No Chrome/Chromium executable is available on the runner.');
 }
 
@@ -64,11 +26,9 @@ async function waitForJson(url, attempts = 160) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url);
-      if (response.ok) {
-        return response.json();
-      }
+      if (response.ok) return response.json();
     } catch {
-      // Chrome is still starting.
+      // Browser is still starting.
     }
     await delay(125);
   }
@@ -81,38 +41,26 @@ class CdpClient {
     this.nextId = 1;
     this.pending = new Map();
     this.listeners = new Map();
-
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(String(event.data));
       if (message.id !== undefined) {
         const pending = this.pending.get(message.id);
-        if (pending !== undefined) {
-          this.pending.delete(message.id);
-          if (message.error !== undefined) {
-            pending.reject(
-              new Error(`${message.error.code}: ${message.error.message}`)
-            );
-          } else {
-            pending.resolve(message.result ?? {});
-          }
-        }
+        if (!pending) return;
+        this.pending.delete(message.id);
+        if (message.error) pending.reject(new Error(`${message.error.code}: ${message.error.message}`));
+        else pending.resolve(message.result ?? {});
         return;
       }
-
-      const handlers = this.listeners.get(message.method) ?? [];
-      handlers.forEach((handler) => handler(message.params ?? {}));
+      for (const handler of this.listeners.get(message.method) ?? []) handler(message.params ?? {});
     });
   }
 
   on(method, handler) {
-    const handlers = this.listeners.get(method) ?? [];
-    handlers.push(handler);
-    this.listeners.set(method, handlers);
+    this.listeners.set(method, [...(this.listeners.get(method) ?? []), handler]);
   }
 
   call(method, params = {}) {
-    const id = this.nextId;
-    this.nextId += 1;
+    const id = this.nextId++;
     return new Promise((resolvePromise, reject) => {
       this.pending.set(id, { resolve: resolvePromise, reject });
       this.socket.send(JSON.stringify({ id, method, params }));
@@ -125,69 +73,41 @@ class CdpClient {
       returnByValue: true,
       awaitPromise: true
     });
-    if (result.exceptionDetails !== undefined) {
-      throw new Error(
-        result.exceptionDetails.text ?? 'Browser evaluation failed.'
-      );
-    }
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Browser evaluation failed.');
     return result.result?.value;
   }
 }
 
-async function waitForCondition(check, label, attempts = 80) {
+async function waitFor(check, label, attempts = 80) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) {
-      return;
-    }
+    if (await check()) return;
     await delay(125);
   }
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-async function navigateToDemo(cdp, demoName, nodeCount) {
-  await cdp.call('Page.navigate', { url: `${BASE_URL}/?demo=${demoName}` });
-  await waitForCondition(
-    async () =>
-      cdp.evaluate(
-        `document.readyState === 'complete' && document.querySelectorAll('.react-flow__node-document').length === ${nodeCount}`
-      ),
-    `${demoName} Document Nodes`
+async function navigate(cdp, demo, count) {
+  await cdp.call('Page.navigate', { url: `${BASE_URL}/?demo=${demo}` });
+  await waitFor(
+    () => cdp.evaluate(`document.readyState === 'complete' && document.querySelectorAll('.react-flow__node-document').length === ${count}`),
+    `${demo} nodes`
   );
   await cdp.evaluate('document.fonts.ready.then(() => true)');
 }
 
 async function click(cdp, point) {
   await cdp.call('Input.dispatchMouseEvent', {
-    type: 'mousePressed',
-    x: point.x,
-    y: point.y,
-    button: 'left',
-    buttons: 1,
-    clickCount: 1,
-    pointerType: 'mouse'
+    type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1
   });
   await cdp.call('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: point.x,
-    y: point.y,
-    button: 'left',
-    buttons: 0,
-    clickCount: 1,
-    pointerType: 'mouse'
+    type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1
   });
 }
 
 async function drag(cdp, from, to, steps = 8) {
   await cdp.call('Input.dispatchMouseEvent', {
-    type: 'mousePressed',
-    x: from.x,
-    y: from.y,
-    button: 'left',
-    buttons: 1,
-    clickCount: 1,
-    pointerType: 'mouse'
+    type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1
   });
-
   for (let step = 1; step <= steps; step += 1) {
     const progress = step / steps;
     await cdp.call('Input.dispatchMouseEvent', {
@@ -195,74 +115,43 @@ async function drag(cdp, from, to, steps = 8) {
       x: from.x + (to.x - from.x) * progress,
       y: from.y + (to.y - from.y) * progress,
       button: 'left',
-      buttons: 1,
-      pointerType: 'mouse'
+      buttons: 1
     });
     await delay(30);
   }
-
   await cdp.call('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: to.x,
-    y: to.y,
-    button: 'left',
-    buttons: 0,
-    clickCount: 1,
-    pointerType: 'mouse'
+    type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 0, clickCount: 1
   });
 }
 
 async function pressTab(cdp) {
   await cdp.call('Input.dispatchKeyEvent', {
-    type: 'keyDown',
-    key: 'Tab',
-    code: 'Tab',
-    windowsVirtualKeyCode: 9
+    type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9
   });
   await cdp.call('Input.dispatchKeyEvent', {
-    type: 'keyUp',
-    key: 'Tab',
-    code: 'Tab',
-    windowsVirtualKeyCode: 9
+    type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9
   });
 }
 
-function movedEnough(before, after, minimum = 12) {
-  return (
-    Math.abs(after.left - before.left) >= minimum ||
-    Math.abs(after.top - before.top) >= minimum
-  );
+function moved(before, after, minimum = 12) {
+  return Math.abs(after.left - before.left) >= minimum || Math.abs(after.top - before.top) >= minimum;
 }
 
 async function screenshot(cdp, name) {
-  const capture = await cdp.call('Page.captureScreenshot', {
-    format: 'png',
-    captureBeyondViewport: false
-  });
+  const capture = await cdp.call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   writeFileSync(resolve(OUTPUT_DIR, `${name}.png`), capture.data, 'base64');
 }
 
 async function zoomMixedForEvidence(cdp) {
   const point = await cdp.evaluate(`(() => {
-    const pane = document.querySelector('.react-flow__pane').getBoundingClientRect();
-    return { x: pane.left + pane.width * 0.58, y: pane.top + pane.height * 0.48 };
+    const rect = document.querySelector('.react-flow__pane').getBoundingClientRect();
+    return { x: rect.left + rect.width * 0.58, y: rect.top + rect.height * 0.48 };
   })()`);
-
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const zoom = await cdp.evaluate(`(() => {
-      const viewport = document.querySelector('.react-flow__viewport');
-      return new DOMMatrix(getComputedStyle(viewport).transform).a;
-    })()`);
-    if (zoom >= 0.55) {
-      return;
-    }
+    const zoom = await cdp.evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('.react-flow__viewport')).transform).a`);
+    if (zoom >= 0.55) return;
     await cdp.call('Input.dispatchMouseEvent', {
-      type: 'mouseWheel',
-      x: point.x,
-      y: point.y,
-      deltaX: 0,
-      deltaY: -320,
-      pointerType: 'mouse'
+      type: 'mouseWheel', x: point.x, y: point.y, deltaX: 0, deltaY: -320
     });
     await delay(100);
   }
@@ -270,448 +159,228 @@ async function zoomMixedForEvidence(cdp) {
 
 async function main() {
   mkdirSync(OUTPUT_DIR, { recursive: true });
-  const chromeProfile = resolve('/tmp', `t03-chrome-${process.pid}`);
-  mkdirSync(chromeProfile, { recursive: true });
-  const browserErrors = [];
-  const chrome = spawn(
-    chromeExecutable(),
-    [
-      '--headless=new',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--remote-debugging-address=127.0.0.1',
-      `--remote-debugging-port=${CDP_PORT}`,
-      `--user-data-dir=${chromeProfile}`,
-      '--window-size=1440,1000',
-      'about:blank'
-    ],
-    { stdio: ['ignore', 'ignore', 'ignore'] }
-  );
+  const profile = resolve('/tmp', `t03-chrome-${process.pid}`);
+  mkdirSync(profile, { recursive: true });
+  const errors = [];
+  const chrome = spawn(chromeExecutable(), [
+    '--headless=new',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--remote-debugging-address=127.0.0.1',
+    `--remote-debugging-port=${CDP_PORT}`,
+    `--user-data-dir=${profile}`,
+    '--window-size=1440,1000',
+    'about:blank'
+  ], { stdio: ['ignore', 'ignore', 'ignore'] });
 
   try {
-    const pages = await waitForJson(
-      `http://127.0.0.1:${CDP_PORT}/json/list`
-    );
+    const pages = await waitForJson(`http://127.0.0.1:${CDP_PORT}/json/list`);
     const page = pages.find((entry) => entry.type === 'page');
-    if (page?.webSocketDebuggerUrl === undefined) {
-      throw new Error('Chrome DevTools page target was not found.');
-    }
+    if (!page?.webSocketDebuggerUrl) throw new Error('Chrome DevTools page target was not found.');
 
     const socket = new WebSocket(page.webSocketDebuggerUrl);
     await new Promise((resolvePromise, reject) => {
       socket.addEventListener('open', resolvePromise, { once: true });
       socket.addEventListener('error', reject, { once: true });
     });
-
     const cdp = new CdpClient(socket);
-    cdp.on('Runtime.exceptionThrown', (params) => {
-      browserErrors.push(
-        `exception: ${params.exceptionDetails?.text ?? 'unknown'}`
-      );
-    });
+    cdp.on('Runtime.exceptionThrown', (params) => errors.push(`exception: ${params.exceptionDetails?.text ?? 'unknown'}`));
     cdp.on('Runtime.consoleAPICalled', (params) => {
-      if (params.type === 'error') {
-        const text = (params.args ?? [])
-          .map((arg) => arg.value ?? arg.description ?? '')
-          .join(' ');
-        browserErrors.push(`console.error: ${text}`);
-      }
+      if (params.type === 'error') errors.push(`console.error: ${(params.args ?? []).map((arg) => arg.value ?? arg.description ?? '').join(' ')}`);
     });
     cdp.on('Log.entryAdded', ({ entry }) => {
-      if (entry?.level === 'error') {
-        browserErrors.push(`log.error: ${entry.text ?? 'unknown'}`);
-      }
+      if (entry?.level === 'error') errors.push(`log.error: ${entry.text ?? 'unknown'}`);
     });
-
     await cdp.call('Page.enable');
     await cdp.call('Runtime.enable');
     await cdp.call('Log.enable');
+    await cdp.call('Page.bringToFront');
 
-    const report = {
-      demos: {},
-      markdown: {},
-      scrolling: {},
-      interactions: {}
-    };
+    const report = { demos: {}, markdown: {}, scrolling: {}, interactions: {} };
 
-    for (const demo of DEMOS) {
-      await navigateToDemo(cdp, demo.name, demo.nodes);
+    for (const [name, nodeCount, edgeCount, headingCount, markdownCount, duplicateApi] of DEMOS) {
+      await navigate(cdp, name, nodeCount);
       const snapshot = await cdp.evaluate(`(() => {
         const nodes = [...document.querySelectorAll('.react-flow__node-document')];
         const cards = [...document.querySelectorAll('.document-card')];
         const titles = cards.map((card) => card.querySelector('.document-card-title')?.textContent ?? '');
-        const apiModes = cards
-          .filter((card) => card.querySelector('.document-card-title')?.textContent === 'API')
-          .map((card) => card.getAttribute('data-view-mode'));
+        const apiModes = cards.filter((card) => card.querySelector('.document-card-title')?.textContent === 'API').map((card) => card.dataset.viewMode);
+        const h2 = cards.filter((card) => card.matches('.document-card--heading.document-card--h2')).map((card) => {
+          const cardStyle = getComputedStyle(card);
+          const titleStyle = getComputedStyle(card.querySelector('.document-card-title'));
+          return [cardStyle.borderWidth, titleStyle.fontSize, titleStyle.fontWeight].join('|');
+        });
         const edgePaths = [...document.querySelectorAll('.react-flow__edge-path')];
-        const h2HeadingStyles = cards
-          .filter((card) => card.matches('.document-card--heading.document-card--h2'))
-          .map((card) => {
-            const title = card.querySelector('.document-card-title');
-            const style = getComputedStyle(card);
-            const titleStyle = getComputedStyle(title);
-            return [style.borderWidth, titleStyle.fontSize, titleStyle.fontWeight].join('|');
-          });
         return {
           nodes: nodes.length,
-          nodeIdsUnique: new Set(nodes.map((node) => node.getAttribute('data-id'))).size === nodes.length,
+          nodeIdsUnique: new Set(nodes.map((node) => node.dataset.id)).size === nodes.length,
           edges: document.querySelectorAll('.react-flow__edge').length,
           edgePathsReady: edgePaths.length > 0 && edgePaths.every((path) => (path.getAttribute('d') ?? '').length > 0),
           headingCards: document.querySelectorAll('.document-card--heading').length,
           markdownCards: document.querySelectorAll('.document-card--markdown').length,
           handles: document.querySelectorAll('.react-flow__handle').length,
-          titles,
           duplicateApi: titles.filter((title) => title === 'API').length,
           apiModes,
           syntheticRootVisible: titles.includes('Document Root'),
           horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-          uniqueNodeTransforms: new Set(nodes.map((node) => node.style.transform)).size,
-          cjkFontAvailable: document.fonts.check('16px "Noto Sans CJK SC"', '文件处理系统'),
-          sameDepthHeadingTheme: h2HeadingStyles.length < 2 || new Set(h2HeadingStyles).size === 1
+          uniqueTransforms: new Set(nodes.map((node) => node.style.transform)).size,
+          cjk: document.fonts.check('16px "Noto Sans CJK SC"', '文件处理系统'),
+          sameDepthTheme: h2.length < 2 || new Set(h2).size === 1
         };
       })()`);
 
-      if (
-        snapshot.nodes !== demo.nodes ||
-        snapshot.edges !== demo.edges ||
-        snapshot.headingCards !== demo.headingCards ||
-        snapshot.markdownCards !== demo.markdownCards
-      ) {
-        throw new Error(
-          `${demo.name}: expected nodes/edges/heading/markdown ${demo.nodes}/${demo.edges}/${demo.headingCards}/${demo.markdownCards}, received ${snapshot.nodes}/${snapshot.edges}/${snapshot.headingCards}/${snapshot.markdownCards}`
-        );
+      if (snapshot.nodes !== nodeCount || snapshot.edges !== edgeCount || snapshot.headingCards !== headingCount || snapshot.markdownCards !== markdownCount) {
+        throw new Error(`${name}: count mismatch ${JSON.stringify(snapshot)}`);
       }
-      if (!snapshot.nodeIdsUnique) {
-        throw new Error(`${demo.name}: React Flow node IDs are not unique.`);
-      }
-      if (!snapshot.edgePathsReady) {
-        throw new Error(`${demo.name}: hierarchy edges were not measured/rendered.`);
-      }
-      if (snapshot.handles !== demo.nodes * 2) {
-        throw new Error(`${demo.name}: Document Nodes do not share exactly two structural handles.`);
-      }
-      if (snapshot.duplicateApi !== demo.duplicateApi) {
-        throw new Error(`${demo.name}: duplicate API heading count mismatch.`);
-      }
-      if (
-        demo.name === 'mixed-cards' &&
-        JSON.stringify(snapshot.apiModes) !== JSON.stringify(['heading', 'markdown'])
-      ) {
-        throw new Error('mixed-cards: duplicate API nodes did not keep independent view modes.');
-      }
-      if (!snapshot.sameDepthHeadingTheme) {
-        throw new Error(`${demo.name}: same-depth Heading Cards do not share the same base theme.`);
-      }
-      if (snapshot.syntheticRootVisible) {
-        throw new Error(`${demo.name}: synthetic Document Root became visible.`);
-      }
-      if (snapshot.horizontalOverflow) {
-        throw new Error(`${demo.name}: page has horizontal overflow.`);
-      }
-      if (snapshot.uniqueNodeTransforms !== snapshot.nodes) {
-        throw new Error(`${demo.name}: nodes completely overlap in debug placement.`);
-      }
-      if (!snapshot.cjkFontAvailable) {
-        throw new Error(`${demo.name}: CJK font fallback is unavailable in browser QA.`);
-      }
+      if (!snapshot.nodeIdsUnique || !snapshot.edgePathsReady) throw new Error(`${name}: node identity or hierarchy edge rendering failed.`);
+      if (snapshot.handles !== nodeCount * 2) throw new Error(`${name}: handle contract failed.`);
+      if (snapshot.duplicateApi !== duplicateApi) throw new Error(`${name}: duplicate API count failed.`);
+      if (name === 'mixed-cards' && JSON.stringify(snapshot.apiModes) !== JSON.stringify(['heading', 'markdown'])) throw new Error('Duplicate API nodes did not keep independent view modes.');
+      if (!snapshot.sameDepthTheme) throw new Error(`${name}: same-depth Heading Card theme drifted.`);
+      if (snapshot.syntheticRootVisible || snapshot.horizontalOverflow || snapshot.uniqueTransforms !== snapshot.nodes || !snapshot.cjk) throw new Error(`${name}: visual invariant failed.`);
 
-      if (demo.name === 'mixed-cards') {
-        const localBodyOwnership = await cdp.evaluate(`(() => {
-          const upload = [...document.querySelectorAll('.document-card')]
-            .find((card) => card.querySelector('.document-card-title')?.textContent === '上传文件');
-          const text = upload?.querySelector('.markdown-card-body')?.textContent ?? '';
-          return {
-            hasOwnBody: text.includes('支持多种格式'),
-            repeatsDescendants: ['TXT', 'PDF', 'Word'].some((title) => text.includes(title))
-          };
+      if (name === 'mixed-cards') {
+        const ownership = await cdp.evaluate(`(() => {
+          const card = [...document.querySelectorAll('.document-card')].find((item) => item.querySelector('.document-card-title')?.textContent === '上传文件');
+          const text = card?.querySelector('.markdown-card-body')?.textContent ?? '';
+          return { own: text.includes('支持多种格式'), descendants: ['TXT','PDF','Word'].some((title) => text.includes(title)) };
         })()`);
-        if (!localBodyOwnership.hasOwnBody || localBodyOwnership.repeatsDescendants) {
-          throw new Error('mixed-cards: Markdown Card violated Local Body ownership semantics.');
-        }
+        if (!ownership.own || ownership.descendants) throw new Error('Markdown Card violated Local Body ownership.');
       }
 
-      if (demo.name === 'empty-card') {
-        const emptyBody = await cdp.evaluate(`(() => {
-          const card = [...document.querySelectorAll('.document-card')]
-            .find((item) => item.querySelector('.document-card-title')?.textContent === 'Empty');
-          return {
-            mode: card?.getAttribute('data-view-mode') ?? null,
-            hasBodyScroller: card?.querySelector('.markdown-card-body') !== null
-          };
+      if (name === 'empty-card') {
+        const empty = await cdp.evaluate(`(() => {
+          const card = [...document.querySelectorAll('.document-card')].find((item) => item.querySelector('.document-card-title')?.textContent === 'Empty');
+          return { mode: card?.dataset.viewMode ?? null, body: card?.querySelector('.markdown-card-body') !== null };
         })()`);
-        if (emptyBody.mode !== 'markdown' || emptyBody.hasBodyScroller) {
-          throw new Error('empty-card: empty Local Body is not a valid header-only Markdown Card.');
-        }
+        if (empty.mode !== 'markdown' || empty.body) throw new Error('Empty Local Body presentation failed.');
       }
 
-      report.demos[demo.name] = snapshot;
-
-      if (demo.name === 'mixed-cards') {
-        await zoomMixedForEvidence(cdp);
-      }
-      await screenshot(cdp, demo.name);
+      report.demos[name] = snapshot;
+      if (name === 'mixed-cards') await zoomMixedForEvidence(cdp);
+      await screenshot(cdp, name);
     }
 
-    await navigateToDemo(cdp, 'gfm-card', 2);
-    const markdownChecks = await cdp.evaluate(`(() => {
+    await navigate(cdp, 'gfm-card', 2);
+    const markdown = await cdp.evaluate(`(() => {
       const body = document.querySelector('.markdown-card-body');
       const links = [...body.querySelectorAll('a')];
-      const safeLink = links.find((link) => link.textContent === '安全链接');
-      const unsafeLink = links.find((link) => link.textContent === '不安全链接');
+      const safe = links.find((link) => link.textContent === '安全链接');
+      const unsafe = links.find((link) => link.textContent === '不安全链接');
       return {
         paragraph: body.querySelectorAll('p').length > 0,
-        unorderedList: body.querySelectorAll('ul').length > 0,
-        orderedList: body.querySelectorAll('ol').length > 0,
-        taskList: body.querySelectorAll('input[type="checkbox"]').length === 2,
+        unordered: body.querySelectorAll('ul').length > 0,
+        ordered: body.querySelectorAll('ol').length > 0,
+        tasks: body.querySelectorAll('input[type="checkbox"]').length === 2,
         inlineCode: [...body.querySelectorAll('code')].some((code) => code.textContent === 'inlineCode()'),
         codeBlock: body.querySelectorAll('pre code').length > 0,
-        blockquote: body.querySelectorAll('blockquote').length > 0,
+        quote: body.querySelectorAll('blockquote').length > 0,
         table: body.querySelectorAll('table').length > 0,
-        strikethrough: body.querySelectorAll('del').length > 0,
-        safeLinkHref: safeLink?.getAttribute('href') ?? null,
-        safeLinkTarget: safeLink?.getAttribute('target') ?? null,
-        safeLinkRel: safeLink?.getAttribute('rel') ?? null,
-        safeLinkNoDrag: safeLink?.classList.contains('nodrag') ?? false,
-        unsafeLinkHref: unsafeLink?.getAttribute('href') ?? null,
-        rawScriptElements: body.querySelectorAll('script').length,
-        rawClickElements: body.querySelectorAll('[onclick]').length,
-        rawHtmlExecuted: globalThis.__t03RawHtmlExecuted === true || globalThis.__t03RawHtmlClicked === true
+        strike: body.querySelectorAll('del').length > 0,
+        safeHref: safe?.getAttribute('href') ?? null,
+        safeTarget: safe?.getAttribute('target') ?? null,
+        safeRel: safe?.getAttribute('rel') ?? null,
+        safeNoDrag: safe?.classList.contains('nodrag') ?? false,
+        unsafeHref: unsafe?.getAttribute('href') ?? null,
+        rawScript: body.querySelectorAll('script').length,
+        rawClick: body.querySelectorAll('[onclick]').length,
+        rawExecuted: globalThis.__t03RawHtmlExecuted === true || globalThis.__t03RawHtmlClicked === true
       };
     })()`);
+    for (const key of ['paragraph','unordered','ordered','tasks','inlineCode','codeBlock','quote','table','strike','safeNoDrag']) {
+      if (!markdown[key]) throw new Error(`GFM check failed: ${key}`);
+    }
+    if (markdown.safeHref !== 'https://example.com/docs' || markdown.safeTarget !== '_blank' || markdown.safeRel !== 'noopener noreferrer') throw new Error('Safe link attributes failed.');
+    if (markdown.unsafeHref?.toLowerCase().startsWith('javascript:')) throw new Error('Unsafe link protocol was allowed.');
+    if (markdown.rawScript || markdown.rawClick || markdown.rawExecuted) throw new Error('Raw HTML became executable.');
+    report.markdown = markdown;
 
-    for (const key of [
-      'paragraph',
-      'unorderedList',
-      'orderedList',
-      'taskList',
-      'inlineCode',
-      'codeBlock',
-      'blockquote',
-      'table',
-      'strikethrough',
-      'safeLinkNoDrag'
-    ]) {
-      if (!markdownChecks[key]) {
-        throw new Error(`gfm-card: Markdown rendering check failed for ${key}.`);
-      }
-    }
-    if (
-      markdownChecks.safeLinkHref !== 'https://example.com/docs' ||
-      markdownChecks.safeLinkTarget !== '_blank' ||
-      markdownChecks.safeLinkRel !== 'noopener noreferrer'
-    ) {
-      throw new Error('gfm-card: safe link attributes are incorrect.');
-    }
-    if (
-      markdownChecks.unsafeLinkHref?.toLowerCase().startsWith('javascript:')
-    ) {
-      throw new Error('gfm-card: unsafe link protocol was allowed.');
-    }
-    if (
-      markdownChecks.rawScriptElements !== 0 ||
-      markdownChecks.rawClickElements !== 0 ||
-      markdownChecks.rawHtmlExecuted
-    ) {
-      throw new Error('gfm-card: raw HTML became executable DOM.');
-    }
-    report.markdown = markdownChecks;
-
-    const linkDragStart = await cdp.evaluate(`(() => {
-      const link = [...document.querySelectorAll('.markdown-card-body a')]
-        .find((element) => element.textContent === '安全链接');
+    const linkDrag = await cdp.evaluate(`(() => {
+      const link = [...document.querySelectorAll('.markdown-card-body a')].find((item) => item.textContent === '安全链接');
       const node = link.closest('.react-flow__node-document');
       const linkRect = link.getBoundingClientRect();
       const nodeRect = node.getBoundingClientRect();
-      return {
-        point: { x: linkRect.left + linkRect.width / 2, y: linkRect.top + linkRect.height / 2 },
-        nodeRect: { left: nodeRect.left, top: nodeRect.top }
-      };
+      return { point: { x: linkRect.left + linkRect.width / 2, y: linkRect.top + linkRect.height / 2 }, before: { left: nodeRect.left, top: nodeRect.top } };
     })()`);
-    await drag(
-      cdp,
-      linkDragStart.point,
-      { x: linkDragStart.point.x + 22, y: linkDragStart.point.y + 4 },
-      5
-    );
-    await delay(120);
-    const linkDragAfter = await cdp.evaluate(`(() => {
-      const link = [...document.querySelectorAll('.markdown-card-body a')]
-        .find((element) => element.textContent === '安全链接');
-      const rect = link.closest('.react-flow__node-document').getBoundingClientRect();
-      return { left: rect.left, top: rect.top };
-    })()`);
-    if (movedEnough(linkDragStart.nodeRect, linkDragAfter, 4)) {
-      throw new Error('Link interaction accidentally dragged its Document Node.');
-    }
+    await drag(cdp, linkDrag.point, { x: linkDrag.point.x + 22, y: linkDrag.point.y + 4 }, 5);
+    const linkAfter = await cdp.evaluate(`(() => { const rect = [...document.querySelectorAll('.markdown-card-body a')].find((item) => item.textContent === '安全链接').closest('.react-flow__node-document').getBoundingClientRect(); return { left: rect.left, top: rect.top }; })()`);
+    if (moved(linkDrag.before, linkAfter, 4)) throw new Error('Link interaction dragged the node.');
 
-    const selectablePoint = await cdp.evaluate(`(() => {
-      const card = document.querySelector('.document-card--heading');
-      const rect = card.getBoundingClientRect();
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    })()`);
-    await click(cdp, selectablePoint);
-    await waitForCondition(
-      async () =>
-        cdp.evaluate(
-          "document.querySelectorAll('.document-card[data-selected=\"true\"]').length === 1"
-        ),
-      'visible Document Node selection'
-    );
-    const selectedOutline = await cdp.evaluate(`(() => {
-      const card = document.querySelector('.document-card[data-selected="true"]');
-      const style = getComputedStyle(card);
-      return { width: style.outlineWidth, style: style.outlineStyle };
-    })()`);
-    if (selectedOutline.width === '0px' || selectedOutline.style === 'none') {
-      throw new Error('Selected state has no non-color outline.');
-    }
+    const selectable = await cdp.evaluate(`(() => { const rect = document.querySelector('.document-card--heading').getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; })()`);
+    await click(cdp, selectable);
+    await waitFor(() => cdp.evaluate(`document.querySelectorAll('.document-card[data-selected="true"]').length === 1`), 'selection');
+    const selected = await cdp.evaluate(`(() => { const style = getComputedStyle(document.querySelector('.document-card[data-selected="true"]')); return { width: style.outlineWidth, style: style.outlineStyle }; })()`);
+    if (selected.width === '0px' || selected.style === 'none') throw new Error('Selection has no non-color outline.');
 
-    await navigateToDemo(cdp, 'gfm-card', 2);
-    let focusState = null;
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    await navigate(cdp, 'gfm-card', 2);
+    await cdp.evaluate(`document.body.tabIndex = -1; document.body.focus(); true`);
+    let focus = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
       await pressTab(cdp);
-      await delay(80);
-      focusState = await cdp.evaluate(`(() => {
+      await delay(100);
+      focus = await cdp.evaluate(`(() => {
         const active = document.activeElement;
         const style = active instanceof HTMLElement ? getComputedStyle(active) : null;
         return {
-          isDocumentNode: active?.classList?.contains('react-flow__node-document') ?? false,
+          shell: active?.classList?.contains('document-node-shell') ?? false,
           focusVisible: active?.matches?.(':focus-visible') ?? false,
           outlineWidth: style?.outlineWidth ?? '0px',
-          outlineStyle: style?.outlineStyle ?? 'none'
+          outlineStyle: style?.outlineStyle ?? 'none',
+          tag: active?.tagName ?? null,
+          className: typeof active?.className === 'string' ? active.className : null
         };
       })()`);
-      if (focusState.isDocumentNode) {
-        break;
-      }
+      if (focus.shell) break;
     }
-    if (
-      !focusState?.isDocumentNode ||
-      !focusState.focusVisible ||
-      focusState.outlineWidth === '0px' ||
-      focusState.outlineStyle === 'none'
-    ) {
-      throw new Error('Keyboard focus indication is missing on Document Nodes.');
-    }
+    if (!focus?.shell || !focus.focusVisible || focus.outlineWidth === '0px' || focus.outlineStyle === 'none') throw new Error(`Keyboard focus indication failed: ${JSON.stringify(focus)}`);
 
-    await navigateToDemo(cdp, 'long-card', 2);
+    await navigate(cdp, 'long-card', 2);
     const scrollBefore = await cdp.evaluate(`(() => {
       const body = document.querySelector('.markdown-card-body');
-      const viewport = document.querySelector('.react-flow__viewport');
       const rect = body.getBoundingClientRect();
       return {
         scrollHeight: body.scrollHeight,
         clientHeight: body.clientHeight,
         scrollTop: body.scrollTop,
-        viewportTransform: viewport.style.transform,
+        viewport: document.querySelector('.react-flow__viewport').style.transform,
         point: { x: rect.left + rect.width / 2, y: rect.top + Math.min(rect.height / 2, 120) }
       };
     })()`);
-    if (scrollBefore.scrollHeight <= scrollBefore.clientHeight) {
-      throw new Error('long-card: Markdown body is not bounded and scrollable.');
-    }
-
-    await cdp.call('Input.dispatchMouseEvent', {
-      type: 'mouseWheel',
-      x: scrollBefore.point.x,
-      y: scrollBefore.point.y,
-      deltaX: 0,
-      deltaY: 420,
-      pointerType: 'mouse'
-    });
-    await waitForCondition(
-      async () =>
-        (await cdp.evaluate(
-          "document.querySelector('.markdown-card-body').scrollTop"
-        )) > scrollBefore.scrollTop,
-      'Markdown body internal scroll'
-    );
-    const scrollAfter = await cdp.evaluate(`(() => ({
-      scrollTop: document.querySelector('.markdown-card-body').scrollTop,
-      viewportTransform: document.querySelector('.react-flow__viewport').style.transform
-    }))()`);
-    if (scrollAfter.viewportTransform !== scrollBefore.viewportTransform) {
-      throw new Error('Markdown body wheel changed Canvas viewport transform.');
-    }
+    if (scrollBefore.scrollHeight <= scrollBefore.clientHeight) throw new Error('Long Markdown Card is not bounded.');
+    await cdp.call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: scrollBefore.point.x, y: scrollBefore.point.y, deltaX: 0, deltaY: 420 });
+    await waitFor(() => cdp.evaluate(`document.querySelector('.markdown-card-body').scrollTop > ${scrollBefore.scrollTop}`), 'internal scroll');
+    const scrollAfter = await cdp.evaluate(`({ scrollTop: document.querySelector('.markdown-card-body').scrollTop, viewport: document.querySelector('.react-flow__viewport').style.transform })`);
+    if (scrollAfter.viewport !== scrollBefore.viewport) throw new Error('Markdown body wheel changed Canvas viewport.');
     report.scrolling = {
       scrollHeight: scrollBefore.scrollHeight,
       clientHeight: scrollBefore.clientHeight,
       scrollTopBefore: scrollBefore.scrollTop,
       scrollTopAfter: scrollAfter.scrollTop,
-      viewportZoomIsolation: 'pass'
+      viewportTransformBefore: scrollBefore.viewport,
+      viewportTransformAfter: scrollAfter.viewport
     };
 
-    const headerDragStart = await cdp.evaluate(`(() => {
-      const card = document.querySelector('.document-card--markdown');
-      const header = card.querySelector('.document-card-header');
-      const node = card.closest('.react-flow__node-document');
-      const headerRect = header.getBoundingClientRect();
-      const nodeRect = node.getBoundingClientRect();
-      return {
-        point: { x: headerRect.left + headerRect.width / 2, y: headerRect.top + headerRect.height / 2 },
-        nodeRect: { left: nodeRect.left, top: nodeRect.top }
-      };
+    const headerDrag = await cdp.evaluate(`(() => {
+      const header = document.querySelector('.document-card--markdown .document-card-header');
+      const node = header.closest('.react-flow__node-document');
+      const hr = header.getBoundingClientRect();
+      const nr = node.getBoundingClientRect();
+      return { point: { x: hr.left + hr.width / 2, y: hr.top + hr.height / 2 }, before: { left: nr.left, top: nr.top } };
     })()`);
-    await drag(
-      cdp,
-      headerDragStart.point,
-      { x: headerDragStart.point.x + 86, y: headerDragStart.point.y + 54 },
-      9
-    );
-    await waitForCondition(
-      async () => {
-        const current = await cdp.evaluate(`(() => {
-          const rect = document.querySelector('.document-card--markdown')
-            .closest('.react-flow__node-document').getBoundingClientRect();
-          return { left: rect.left, top: rect.top };
-        })()`);
-        return movedEnough(headerDragStart.nodeRect, current);
-      },
-      'Document Node drag from card header'
-    );
+    await drag(cdp, headerDrag.point, { x: headerDrag.point.x + 86, y: headerDrag.point.y + 54 }, 9);
+    await waitFor(async () => {
+      const after = await cdp.evaluate(`(() => { const rect = document.querySelector('.document-card--markdown').closest('.react-flow__node-document').getBoundingClientRect(); return { left: rect.left, top: rect.top }; })()`);
+      return moved(headerDrag.before, after);
+    }, 'node drag');
 
-    const viewportBefore = await cdp.evaluate(`(() => {
-      const pane = document.querySelector('.react-flow__pane');
-      const viewport = document.querySelector('.react-flow__viewport');
-      const rect = pane.getBoundingClientRect();
-      return {
-        transform: viewport.style.transform,
-        point: { x: rect.right - 70, y: rect.bottom - 70 }
-      };
-    })()`);
-    await cdp.call('Input.dispatchMouseEvent', {
-      type: 'mouseWheel',
-      x: viewportBefore.point.x,
-      y: viewportBefore.point.y,
-      deltaX: 0,
-      deltaY: -220,
-      pointerType: 'mouse'
-    });
-    await waitForCondition(
-      async () =>
-        (await cdp.evaluate(
-          "document.querySelector('.react-flow__viewport').style.transform"
-        )) !== viewportBefore.transform,
-      'Canvas zoom outside Markdown body'
-    );
-    const zoomedTransform = await cdp.evaluate(
-      "document.querySelector('.react-flow__viewport').style.transform"
-    );
-    await drag(
-      cdp,
-      viewportBefore.point,
-      { x: viewportBefore.point.x - 70, y: viewportBefore.point.y - 40 },
-      6
-    );
-    await waitForCondition(
-      async () =>
-        (await cdp.evaluate(
-          "document.querySelector('.react-flow__viewport').style.transform"
-        )) !== zoomedTransform,
-      'Canvas pan outside Markdown body'
-    );
+    const viewport = await cdp.evaluate(`(() => { const pane = document.querySelector('.react-flow__pane').getBoundingClientRect(); return { transform: document.querySelector('.react-flow__viewport').style.transform, point: { x: pane.right - 70, y: pane.bottom - 70 } }; })()`);
+    await cdp.call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: viewport.point.x, y: viewport.point.y, deltaX: 0, deltaY: -220 });
+    await waitFor(() => cdp.evaluate(`document.querySelector('.react-flow__viewport').style.transform !== ${JSON.stringify(viewport.transform)}`), 'canvas zoom');
+    const zoomed = await cdp.evaluate(`document.querySelector('.react-flow__viewport').style.transform`);
+    await drag(cdp, viewport.point, { x: viewport.point.x - 70, y: viewport.point.y - 40 }, 6);
+    await waitFor(() => cdp.evaluate(`document.querySelector('.react-flow__viewport').style.transform !== ${JSON.stringify(zoomed)}`), 'canvas pan');
 
     report.interactions = {
       selection: 'pass',
@@ -719,26 +388,16 @@ async function main() {
       selectedOutline: 'pass',
       nodeDragFromHeader: 'pass',
       linkDragIsolation: 'pass',
+      bodyWheelIsolation: 'pass',
       canvasZoom: 'pass',
       canvasPan: 'pass'
     };
 
-    const keyWarnings = browserErrors.filter((message) =>
-      /unique.*key|key prop/i.test(message)
-    );
-    if (keyWarnings.length > 0) {
-      throw new Error(
-        `React key warning detected: ${keyWarnings.join('\n')}`
-      );
-    }
-    if (browserErrors.length > 0) {
-      throw new Error(`Browser errors detected:\n${browserErrors.join('\n')}`);
-    }
+    const keyWarnings = errors.filter((message) => /unique.*key|key prop/i.test(message));
+    if (keyWarnings.length) throw new Error(`React key warning detected: ${keyWarnings.join('\n')}`);
+    if (errors.length) throw new Error(`Browser errors detected:\n${errors.join('\n')}`);
 
-    writeFileSync(
-      resolve(OUTPUT_DIR, 'report.json'),
-      JSON.stringify(report, null, 2)
-    );
+    writeFileSync(resolve(OUTPUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
     socket.close();
   } finally {

@@ -114,14 +114,14 @@ select {
   font: inherit;
 }
 
-.react-flow__node-document:focus-visible {
+.document-node-shell {
+  position: relative;
+}
+
+.document-node-shell:focus-visible {
   outline: 3px solid rgba(49, 95, 156, 0.48);
   outline-offset: 5px;
   border-radius: calc(var(--radius-node) + 3px);
-}
-
-.document-node-shell {
-  position: relative;
 }
 
 .document-card {

@@ -8,7 +8,7 @@ export function toReactFlowNodes(graph: VisualGraph): DocumentFlowNode[] {
     position: node.position,
     draggable: true,
     selectable: true,
-    focusable: true,
+    focusable: false,
     data: {
       sectionId: node.sectionId,
       title: node.title,
