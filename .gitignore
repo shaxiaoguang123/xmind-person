@@ -1,0 +1,16 @@
+# Initial repository bootstrap. T00 work is developed on a feature branch.
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
