@@ -108,22 +108,58 @@ Markdown Source
   -> unified + remark-parse + remark-gfm
   -> mdast Root
   -> Section Draft extraction
-  -> Section Tree
+  -> Section Tree Draft
   -> Stable Node ID mapping
+  -> Section Tree
 ```
 
-T01 has no React dependency requirement and no React Flow, ELK, Canvas, backend API, persistence, animation, or Flow Edge editing.
+T01 has no React dependency and no React Flow, ELK, Canvas, backend API, persistence, animation, or Flow Edge editing.
 
-Expected pure-core separation:
+### Implemented module boundaries
+
+`apps/web/src/core/markdown/` contains the pure core:
+
+```text
+parseMarkdown.ts             parser composition
+sourcePositions.ts           mdast/unist source-position copying and source slicing
+extractSections.ts           preamble + flat Section Draft extraction
+buildSectionTree.ts          nearest-smaller-depth hierarchy construction
+stableNodeIds.ts             opaque ID assignment/reuse boundary
+projectMarkdownDocument.ts   pipeline composition
+errors.ts                    invalid application-state error boundary
+types.ts                     explicit core domain types
+index.ts                     public core exports
+```
+
+The composition remains:
 
 ```text
 parseMarkdown(source) -> MdastRoot
-extractSections(ast, source) -> SectionDraft[] + preamble
-buildSectionTree(sectionDrafts) -> SectionTreeDraft
-assignStableNodeIds(tree, previousMapping?) -> SectionTree
+extractSections(ast, source) -> SectionExtractionResult
+buildSectionTree(extraction) -> SectionTreeDraft
+assignStableNodeIds(tree, previousMapping?) -> StableNodeIdAssignment
+projectMarkdownDocument(source, options?) -> MarkdownProjectionResult
 ```
 
-Exact function/type names may differ, but parsing, extraction, hierarchy construction, and ID mapping must remain separately testable.
+The parser AST remains in the final projection result, while Local Body and preamble are sliced from original Markdown using mdast offsets. This preserves Markdown source constructs without introducing a second parser or line-counting model.
+
+### Stable identity boundary
+
+T01 uses a structural `projectionKey` only as the lookup key for a supplied prior `StableNodeIdMapping`. Permanent Node IDs remain opaque and default to UUID generation. A title/body change with unchanged structural position can reuse identity; arbitrary external restructuring is explicitly deferred.
+
+See `docs/markdown-section-semantics.md` and ADR-0003.
+
+## T01 Test/Build Boundary
+
+T01 adds only the minimum TypeScript Markdown-core workspace needed for this stage:
+
+- strict TypeScript;
+- ESLint;
+- Vitest;
+- remark/mdast dependencies;
+- GitHub Actions install/lint/typecheck/unit/build gate.
+
+It deliberately does not bootstrap React/Vite UI runtime, Playwright, backend dependencies, or database infrastructure.
 
 ## Deferred Architecture Problems
 
