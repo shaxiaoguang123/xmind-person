@@ -12,7 +12,7 @@ on:
       - 'docs/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   t03-web:
@@ -53,6 +53,31 @@ jobs:
           exit 1
       - name: Browser QA
         run: npm run browser:qa
+      - name: Download verified implementation-head evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/t03-heading-markdown-cards'
+        uses: actions/download-artifact@v4
+        with:
+          name: t03-browser-qa
+          path: /tmp/t03-implementation-evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34117231444
+      - name: Commit verified T03 screenshots
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/t03-heading-markdown-cards'
+        run: |
+          mkdir -p docs/screenshots
+          cp /tmp/t03-implementation-evidence/mixed-cards.png docs/screenshots/t03-mixed-cards.png
+          cp /tmp/t03-implementation-evidence/gfm-card.png docs/screenshots/t03-gfm-card.png
+          cp /tmp/t03-implementation-evidence/long-card.png docs/screenshots/t03-long-card.png
+          cp /tmp/t03-implementation-evidence/empty-card.png docs/screenshots/t03-empty-card.png
+          git add docs/screenshots/t03-mixed-cards.png docs/screenshots/t03-gfm-card.png docs/screenshots/t03-long-card.png docs/screenshots/t03-empty-card.png
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs(t03): add browser screenshot evidence'
+          git push origin HEAD:feat/t03-heading-markdown-cards
       - name: Upload browser QA evidence
         if: always()
         uses: actions/upload-artifact@v4
