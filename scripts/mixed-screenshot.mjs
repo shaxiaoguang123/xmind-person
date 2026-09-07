@@ -148,8 +148,8 @@ async function main() {
     if (!visible.modes.includes('heading') || !visible.modes.includes('markdown')) {
       throw new Error(`Mixed screenshot does not show both presentation modes: ${JSON.stringify(visible)}`);
     }
-    if (!visible.titles.includes('文件处理系统') || !visible.titles.includes('上传文件')) {
-      throw new Error(`Mixed screenshot lost its intended identity anchors: ${JSON.stringify(visible)}`);
+    if (!visible.titles.includes('上传文件') || !visible.titles.includes('TXT')) {
+      throw new Error(`Mixed screenshot lost its intended Heading/Markdown anchors: ${JSON.stringify(visible)}`);
     }
 
     const capture = await cdp.call('Page.captureScreenshot', {
