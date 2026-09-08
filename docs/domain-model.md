@@ -82,6 +82,18 @@ Later graph/UI stages extend node projection with:
 
 These visual fields do not change `headingDepth`.
 
+### T03 Presentation State
+
+T03 implements `viewMode` as a presentation choice with exactly two values:
+
+```text
+heading | markdown
+```
+
+The mode is projected by Stable Node ID and selects `HeadingCard` or `MarkdownCard` inside the same `DocumentNode`. Changing `viewMode` does not change `nodeId`, `headingDepth`, or Section hierarchy, and it does not create a second domain node identity.
+
+At T03, `viewMode` is UI/projection state only. Persistence of presentation state remains deferred to the later Flow Metadata/persistence stages.
+
 ## Section Parent Rule
 
 For every heading, its semantic parent is the nearest previous heading whose depth is smaller than the current heading depth.
