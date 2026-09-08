@@ -99,3 +99,20 @@ Real Chrome screenshots used for T02 acceptance:
 - `docs/screenshots/t02-duplicate-mixed.png`
 
 The T02 visual target is clean/readable/debuggable rather than polished. T12-level motion and visual refinement remain deferred.
+
+### T03 Heading / Markdown Card
+
+T03 replaces the T02 presentation-only `HeadingNode` slice with one unified `DocumentNode` that selects one of two presentations from `viewMode`:
+
+- `HeadingCard` for the compact heading-only presentation;
+- `MarkdownCard` for heading plus Section Local Body.
+
+Both presentations use the same stable React Flow node identity. Switching `heading` / `markdown` does not create a second node or change semantic heading depth.
+
+Markdown Card rendering uses `react-markdown` with `remark-gfm`. Raw HTML is excluded: the renderer uses `skipHtml`, and T03 does not use `rehype-raw` or `dangerouslySetInnerHTML`.
+
+Long Markdown content is bounded and scrolls inside the card. Markdown-body and link interaction isolation prevents body scrolling/link interaction from being interpreted as Canvas zoom/pan or node drag.
+
+T03 preserves the existing non-color-only selected outline, visible keyboard focus treatment, H1-H6 level-theme mapping, and CJK-capable font stack across both presentations.
+
+This stage establishes functional node presentation only. It is not the final T12 visual-polish/motion pass and does not introduce T04 automatic layout, Side Detail placement, collapse, FlowEdge editing, persistence, Markdown editing, toolbar, or Inspector behavior.
